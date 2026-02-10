@@ -1,0 +1,128 @@
+:root {
+  --bg: rgba(30, 30, 30, 0.92);
+  --text: #e8e8e8;
+  --accent: #5ac8fa;
+  --accent-dim: rgba(90, 200, 250, 0.3);
+  --red: #ff453a;
+  --green: #30d158;
+  --border: rgba(255, 255, 255, 0.08);
+}
+
+body {
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.hud {
+  background: var(--bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  min-width: 240px;
+  max-width: 400px;
+  margin: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.mic-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.mic-indicator.idle {
+  background: #666;
+  animation: none;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.2); }
+}
+
+.level-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.level-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.1s ease;
+}
+
+.transcript {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  min-height: 20px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.transcript.placeholder {
+  color: #666;
+  font-style: italic;
+}
+
+.controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.lang-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.on-device-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(48, 209, 88, 0.2);
+  color: var(--green);
+}
+
+.on-device-badge.cloud {
+  background: rgba(255, 159, 10, 0.2);
+  color: #ff9f0a;
+}
+
+.shortcut-hint {
+  font-size: 11px;
+  color: #666;
+}
+
+kbd {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: -apple-system, sans-serif;
+  font-size: 11px;
+}
