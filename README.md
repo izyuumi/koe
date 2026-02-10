@@ -1,0 +1,72 @@
+# Koe (声)
+
+System-wide dictation for macOS. No account, no cloud (when possible), just your voice → text.
+
+## Features
+
+- **Global hotkey** (⌥Space) — toggle dictation from any app
+- **Apple Speech framework** — prefers on-device recognition
+- **Text insertion** — pastes transcribed text at cursor
+- **Menu bar app** — lives in your tray, out of the way
+- **Zero accounts** — no signup, no login, no subscription
+
+## Prerequisites
+
+- macOS 13+ (Ventura)
+- Rust + Cargo
+- Node.js 18+
+- Xcode Command Line Tools
+
+## Setup
+
+```bash
+npm install
+make helper    # Compile Swift speech helper
+make icons     # Generate placeholder icons
+```
+
+## Development
+
+```bash
+make dev       # Run in dev mode (hot reload)
+```
+
+## Build
+
+```bash
+make build     # Production build (.app bundle)
+```
+
+## Architecture
+
+```
+Tauri (Rust)          Swift Helper Process
+┌─────────────┐      ┌─────────────────┐
+│ Global HK   │─────▶│ SFSpeechRecog   │
+│ Tray Icon   │      │ AVAudioEngine   │
+│ Window Mgmt │◀─────│ Mic Level       │
+│ Text Insert  │      └─────────────────┘
+└──────┬──────┘
+       │
+  WebView (React)
+┌─────────────┐
+│ HUD overlay │
+│ Transcript  │
+│ Settings    │
+└─────────────┘
+```
+
+## Permissions Required
+
+- **Microphone** — for audio input
+- **Speech Recognition** — for Apple's STT
+- **Accessibility** — for text insertion into other apps
+
+## Roadmap
+
+- [ ] Streaming recognition (live transcript)
+- [ ] Language toggle (en-US ↔ ja-JP)
+- [ ] Personal dictionary
+- [ ] Filler word removal
+- [ ] App-specific profiles
+- [ ] Local LLM post-processing (optional)
