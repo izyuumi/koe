@@ -98,6 +98,17 @@ fn get_helper_path() -> String {
         return resources.to_string_lossy().to_string();
     }
 
+    // Dev mode: binary is at src-tauri/target/debug/koe,
+    // helper is at src-tauri/koe-speech-helper (two levels up)
+    if let Some(target_dir) = dir.parent() {
+        if let Some(src_tauri) = target_dir.parent() {
+            let dev_helper = src_tauri.join("koe-speech-helper");
+            if dev_helper.exists() {
+                return dev_helper.to_string_lossy().to_string();
+            }
+        }
+    }
+
     // Fallback: try PATH
     "koe-speech-helper".to_string()
 }

@@ -62,6 +62,38 @@ fn toggle_dictation(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn open_microphone_settings() -> Result<(), String> {
+    open_system_settings("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+}
+
+#[tauri::command]
+fn open_speech_settings() -> Result<(), String> {
+    open_system_settings("x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition")
+}
+
+fn open_system_settings(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let status = std::process::Command::new("open")
+            .arg(url)
+            .status()
+            .map_err(|e| format!("failed to launch System Settings: {e}"))?;
+
+        if status.success() {
+            Ok(())
+        } else {
+            Err("System Settings returned a non-zero status".to_string())
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = url;
+        Err("Opening System Settings is only supported on macOS".to_string())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -71,6 +103,8 @@ pub fn run() {
             start_dictation,
             stop_dictation,
             toggle_dictation,
+            open_microphone_settings,
+            open_speech_settings,
         ])
         .setup(|app| {
             // Build tray menu
