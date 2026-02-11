@@ -28,11 +28,6 @@
         "y": null
       }
     ],
-    "trayIcon": {
-      "iconPath": "icons/tray.png",
-      "iconAsTemplate": true,
-      "tooltip": "Koe - Dictation"
-    },
     "security": {
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'"
     }
