@@ -1,0 +1,163 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          release-type: node
+
+  build:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Compile speech helper (universal)
+        run: |
+          mkdir -p src-tauri/binaries
+          # Build for arm64
+          swiftc speech-helper/main.swift \
+            -o src-tauri/binaries/koe-speech-helper-aarch64-apple-darwin \
+            -target arm64-apple-macos13.0 \
+            -framework Speech \
+            -framework AVFoundation \
+            -framework Foundation \
+            -O
+          # Build for x86_64
+          swiftc speech-helper/main.swift \
+            -o src-tauri/binaries/koe-speech-helper-x86_64-apple-darwin \
+            -target x86_64-apple-macos13.0 \
+            -framework Speech \
+            -framework AVFoundation \
+            -framework Foundation \
+            -O
+          # Create universal binary
+          lipo -create \
+            src-tauri/binaries/koe-speech-helper-aarch64-apple-darwin \
+            src-tauri/binaries/koe-speech-helper-x86_64-apple-darwin \
+            -output src-tauri/binaries/koe-speech-helper-universal-apple-darwin
+          # Tauri expects the binary named with the host triple
+          cp src-tauri/binaries/koe-speech-helper-universal-apple-darwin \
+             src-tauri/binaries/koe-speech-helper-aarch64-apple-darwin
+          cp src-tauri/binaries/koe-speech-helper-universal-apple-darwin \
+             src-tauri/binaries/koe-speech-helper-x86_64-apple-darwin
+
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli@^2
+
+      - name: Build Tauri app (aarch64)
+        run: npx tauri build --target aarch64-apple-darwin --bundles dmg
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+
+      - name: Build Tauri app (x86_64)
+        run: npx tauri build --target x86_64-apple-darwin --bundles dmg
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+
+      - name: Create universal DMG
+        run: |
+          VERSION="${{ needs.release-please.outputs.version }}"
+          AARCH64_APP="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Koe.app"
+          X86_APP="src-tauri/target/x86_64-apple-darwin/release/bundle/macos/Koe.app"
+
+          # Create universal app bundle by merging the binaries
+          UNIVERSAL_APP="src-tauri/target/universal/Koe.app"
+          mkdir -p "$(dirname "$UNIVERSAL_APP")"
+          cp -R "$AARCH64_APP" "$UNIVERSAL_APP"
+
+          # Merge main executable
+          lipo -create \
+            "$AARCH64_APP/Contents/MacOS/Koe" \
+            "$X86_APP/Contents/MacOS/Koe" \
+            -output "$UNIVERSAL_APP/Contents/MacOS/Koe"
+
+          # Create DMG
+          DMG_NAME="Koe_${VERSION}_universal.dmg"
+          hdiutil create -volname "Koe" -srcfolder "$UNIVERSAL_APP" \
+            -ov -format UDZO "src-tauri/target/universal/${DMG_NAME}"
+
+          echo "DMG_PATH=src-tauri/target/universal/${DMG_NAME}" >> $GITHUB_ENV
+          echo "DMG_NAME=${DMG_NAME}" >> $GITHUB_ENV
+
+      - name: Compute SHA256
+        id: sha
+        run: |
+          SHA=$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')
+          echo "sha256=${SHA}" >> $GITHUB_OUTPUT
+
+      - name: Upload Release Asset
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ env.DMG_PATH }}
+          asset_name: ${{ env.DMG_NAME }}
+          tag: ${{ needs.release-please.outputs.tag_name }}
+          overwrite: true
+
+      - name: Update Homebrew Cask
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION="${{ needs.release-please.outputs.version }}"
+          SHA="${{ steps.sha.outputs.sha256 }}"
+          TAG="${{ needs.release-please.outputs.tag_name }}"
+          DMG_NAME="${{ env.DMG_NAME }}"
+
+          git clone https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/izyuumi/homebrew-tap.git _tap
+          cd _tap
+
+          cat > Casks/koe.rb << EOF
+          cask "koe" do
+            version "${VERSION}"
+            sha256 "${SHA}"
+
+            url "https://github.com/izyuumi/koe/releases/download/${TAG}/${DMG_NAME}"
+            name "Koe"
+            desc "System-wide dictation for macOS"
+            homepage "https://github.com/izyuumi/koe"
+
+            depends_on macos: ">= :ventura"
+
+            app "Koe.app"
+          end
+          EOF
+
+          # Fix indentation (remove leading spaces from heredoc)
+          sed -i '' 's/^          //' Casks/koe.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/koe.rb
+          git commit -m "chore(koe): bump to ${VERSION}" || exit 0
+          git push
