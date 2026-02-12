@@ -1,14 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 interface DictationState {
   isListening: boolean;
   transcript: string;
   partialResult: string;
   micLevel: number;
-  language: string;
-  isOnDevice: boolean;
   error: string | null;
 }
 
@@ -17,6 +16,7 @@ function App() {
     return localStorage.getItem("koe.onboarding.permissions.v1") !== "done";
   });
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load persisted settings
   const [language, setLanguage] = useState<string>(() => {
@@ -31,20 +31,23 @@ function App() {
     transcript: "",
     partialResult: "",
     micLevel: 0,
-    language,
-    isOnDevice,
     error: null,
   });
+
+  // If onboarding is done on launch, hide the window
+  useEffect(() => {
+    if (!showOnboarding) {
+      getCurrentWebviewWindow().hide().catch(() => {});
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist settings to localStorage
   useEffect(() => {
     localStorage.setItem("koe.language", language);
-    setState((s) => ({ ...s, language }));
   }, [language]);
 
   useEffect(() => {
     localStorage.setItem("koe.onDevice", String(isOnDevice));
-    setState((s) => ({ ...s, isOnDevice }));
   }, [isOnDevice]);
 
   // Push language setting to backend
@@ -76,11 +79,32 @@ function App() {
         setState((s) => ({ ...s, micLevel: e.payload.level }));
       }),
       listen<{ listening: boolean }>("listening-state", (e) => {
-        setState((s) => ({
-          ...s,
-          isListening: e.payload.listening,
-          ...(e.payload.listening ? { error: null } : { micLevel: 0 }),
-        }));
+        if (e.payload.listening) {
+          // Starting: cancel any pending hide, clear old transcript
+          if (hideTimerRef.current) {
+            clearTimeout(hideTimerRef.current);
+            hideTimerRef.current = null;
+          }
+          setState((s) => ({
+            ...s,
+            isListening: true,
+            transcript: "",
+            partialResult: "",
+            error: null,
+            micLevel: 0,
+          }));
+        } else {
+          // Stopping: keep HUD visible briefly so user sees final text
+          setState((s) => ({
+            ...s,
+            isListening: false,
+            micLevel: 0,
+          }));
+          hideTimerRef.current = setTimeout(() => {
+            getCurrentWebviewWindow().hide().catch(() => {});
+            hideTimerRef.current = null;
+          }, 1500);
+        }
       }),
       listen<{ message: string }>("speech-error", (e) => {
         setState((s) => ({
@@ -94,6 +118,7 @@ function App() {
 
     return () => {
       unlisten.then((fns) => fns.forEach((fn) => fn()));
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
   }, []);
 
@@ -112,15 +137,17 @@ function App() {
     ? "Error"
     : state.isListening
       ? "Listening"
-      : "Idle";
-  const transcriptHint = state.isListening
-    ? "Start speaking. Your words appear here."
-    : "Press Option + Space to start dictation.";
+      : state.transcript
+        ? "Done"
+        : "Idle";
+  const transcriptHint = "Start speaking. Your words appear here.";
 
   const markOnboardingDone = () => {
     localStorage.setItem("koe.onboarding.permissions.v1", "done");
     setShowOnboarding(false);
     setOnboardingError(null);
+    // Hide HUD after onboarding — it'll show again on ⌥Space
+    getCurrentWebviewWindow().hide().catch(() => {});
   };
 
   const openMicSettings = async () => {
@@ -141,33 +168,54 @@ function App() {
     }
   };
 
-  return (
-    <div className="hud" role="application" aria-label="Koe dictation HUD">
-      {showOnboarding ? (
+  const openAccessibilitySettings = async () => {
+    try {
+      await invoke("open_accessibility_settings");
+      setOnboardingError(null);
+    } catch {
+      setOnboardingError("Could not open Accessibility settings.");
+    }
+  };
+
+  // Onboarding screen (first launch)
+  if (showOnboarding) {
+    return (
+      <div className="hud" role="application" aria-label="Koe setup">
         <section className="onboarding" aria-label="Permission onboarding">
-          <p className="onboarding-title">Enable Permissions</p>
+          <p className="onboarding-title">Welcome to Koe 声</p>
           <p className="onboarding-copy">
-            Koe needs access to Microphone and Speech Recognition.
+            Grant these permissions so Koe can listen and type for you.
           </p>
-          <div className="onboarding-actions">
+          <div className="onboarding-steps">
             <button type="button" className="onboarding-btn" onClick={openMicSettings}>
-              Microphone
+              🎤 Microphone
             </button>
             <button type="button" className="onboarding-btn" onClick={openSpeechSettings}>
-              Speech
+              🗣 Speech Recognition
             </button>
-            <button
-              type="button"
-              className="onboarding-btn onboarding-btn-primary"
-              onClick={markOnboardingDone}
-            >
-              I&apos;ve Granted Access
+            <button type="button" className="onboarding-btn" onClick={openAccessibilitySettings}>
+              ♿ Accessibility
             </button>
           </div>
+          <p className="onboarding-hint">
+            After granting all three, click below.
+          </p>
+          <button
+            type="button"
+            className="onboarding-btn onboarding-btn-primary onboarding-btn-done"
+            onClick={markOnboardingDone}
+          >
+            All Done — Start Using Koe
+          </button>
           {onboardingError ? <p className="onboarding-error">{onboardingError}</p> : null}
         </section>
-      ) : null}
+      </div>
+    );
+  }
 
+  // Normal HUD (visible during dictation)
+  return (
+    <div className="hud" role="application" aria-label="Koe dictation HUD">
       {state.error ? (
         <div className="error-banner" role="alert">
           <span className="error-icon">⚠</span>
@@ -197,16 +245,16 @@ function App() {
         </div>
         <button
           type="button"
-          className={`on-device-badge ${state.isOnDevice ? "" : "cloud"}`}
-          title={state.isOnDevice ? "On-device processing (click to toggle)" : "Cloud processing (click to toggle)"}
+          className={`on-device-badge ${isOnDevice ? "" : "cloud"}`}
+          title={isOnDevice ? "On-device processing (click to toggle)" : "Cloud processing (click to toggle)"}
           onClick={toggleOnDevice}
         >
-          {state.isOnDevice ? "On-Device" : "Cloud"}
+          {isOnDevice ? "On-Device" : "Cloud"}
         </button>
       </div>
 
       <div className="transcript-wrap">
-        <div className={`transcript ${displayText ? (isPartial ? "partial" : "") : "placeholder"}`}>
+        <div className={`transcript ${displayText ? (isPartial ? "partial" : "final") : "placeholder"}`}>
           {displayText || transcriptHint}
         </div>
       </div>
