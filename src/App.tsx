@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -9,6 +9,7 @@ interface DictationState {
   micLevel: number;
   language: string;
   isOnDevice: boolean;
+  error: string | null;
 }
 
 function App() {
@@ -16,20 +17,53 @@ function App() {
     return localStorage.getItem("koe.onboarding.permissions.v1") !== "done";
   });
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
+
+  // Load persisted settings
+  const [language, setLanguage] = useState<string>(() => {
+    return localStorage.getItem("koe.language") || "en-US";
+  });
+  const [isOnDevice, setIsOnDevice] = useState<boolean>(() => {
+    return localStorage.getItem("koe.onDevice") !== "false";
+  });
+
   const [state, setState] = useState<DictationState>({
     isListening: false,
     transcript: "",
     partialResult: "",
     micLevel: 0,
-    language: "en-US",
-    isOnDevice: true,
+    language,
+    isOnDevice,
+    error: null,
   });
 
+  // Persist settings to localStorage
   useEffect(() => {
-    // Listen for events from the Rust/Swift backend
+    localStorage.setItem("koe.language", language);
+    setState((s) => ({ ...s, language }));
+  }, [language]);
+
+  useEffect(() => {
+    localStorage.setItem("koe.onDevice", String(isOnDevice));
+    setState((s) => ({ ...s, isOnDevice }));
+  }, [isOnDevice]);
+
+  // Push language setting to backend
+  const updateBackendSettings = useCallback(async () => {
+    try {
+      await invoke("set_dictation_settings", { language, onDevice: isOnDevice });
+    } catch {
+      // Backend may not be ready yet
+    }
+  }, [language, isOnDevice]);
+
+  useEffect(() => {
+    updateBackendSettings();
+  }, [updateBackendSettings]);
+
+  useEffect(() => {
     const unlisten = Promise.all([
       listen<{ text: string }>("transcript-partial", (e) => {
-        setState((s) => ({ ...s, partialResult: e.payload.text }));
+        setState((s) => ({ ...s, partialResult: e.payload.text, error: null }));
       }),
       listen<{ text: string }>("transcript-final", (e) => {
         setState((s) => ({
@@ -45,7 +79,15 @@ function App() {
         setState((s) => ({
           ...s,
           isListening: e.payload.listening,
-          ...(e.payload.listening ? {} : { micLevel: 0 }),
+          ...(e.payload.listening ? { error: null } : { micLevel: 0 }),
+        }));
+      }),
+      listen<{ message: string }>("speech-error", (e) => {
+        setState((s) => ({
+          ...s,
+          error: e.payload.message,
+          isListening: false,
+          micLevel: 0,
         }));
       }),
     ]);
@@ -55,9 +97,22 @@ function App() {
     };
   }, []);
 
+  const toggleLanguage = () => {
+    setLanguage((l) => (l === "en-US" ? "ja-JP" : "en-US"));
+  };
+
+  const toggleOnDevice = () => {
+    setIsOnDevice((v) => !v);
+  };
+
   const displayText = state.partialResult || state.transcript;
+  const isPartial = !!state.partialResult;
   const micLevelWidth = `${Math.max(0, Math.min(state.micLevel, 1)) * 100}%`;
-  const statusText = state.isListening ? "Listening" : "Idle";
+  const statusText = state.error
+    ? "Error"
+    : state.isListening
+      ? "Listening"
+      : "Idle";
   const transcriptHint = state.isListening
     ? "Start speaking. Your words appear here."
     : "Press Option + Space to start dictation.";
@@ -113,9 +168,16 @@ function App() {
         </section>
       ) : null}
 
+      {state.error ? (
+        <div className="error-banner" role="alert">
+          <span className="error-icon">⚠</span>
+          <span className="error-text">{state.error}</span>
+        </div>
+      ) : null}
+
       <div className="status-row">
         <div className="status-group">
-          <div className={`mic-indicator ${state.isListening ? "" : "idle"}`} />
+          <div className={`mic-indicator ${state.error ? "error" : state.isListening ? "" : "idle"}`} />
           <span className="status-text" aria-live="polite">
             {statusText}
           </span>
@@ -133,22 +195,26 @@ function App() {
             style={{ width: micLevelWidth }}
           />
         </div>
-        <span
+        <button
+          type="button"
           className={`on-device-badge ${state.isOnDevice ? "" : "cloud"}`}
-          title={state.isOnDevice ? "Speech is processed on-device" : "Speech may be processed in the cloud"}
+          title={state.isOnDevice ? "On-device processing (click to toggle)" : "Cloud processing (click to toggle)"}
+          onClick={toggleOnDevice}
         >
           {state.isOnDevice ? "On-Device" : "Cloud"}
-        </span>
+        </button>
       </div>
 
       <div className="transcript-wrap">
-        <div className={`transcript ${displayText ? "" : "placeholder"}`}>
+        <div className={`transcript ${displayText ? (isPartial ? "partial" : "") : "placeholder"}`}>
           {displayText || transcriptHint}
         </div>
       </div>
 
       <div className="controls">
-        <span className="lang-badge">{state.language}</span>
+        <button type="button" className="lang-badge" onClick={toggleLanguage} title="Toggle language">
+          {language}
+        </button>
         <span className="shortcut-hint">
           <kbd>⌥</kbd> + <kbd>Space</kbd>
         </span>

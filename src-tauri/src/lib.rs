@@ -4,12 +4,42 @@ mod insertion;
 use tauri::{
     AppHandle, Emitter, Manager,
     menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
+    tray::{TrayIconBuilder, TrayIcon},
+    image::Image,
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 static IS_LISTENING: AtomicBool = AtomicBool::new(false);
+static LANGUAGE: Mutex<String> = Mutex::new(String::new());
+static ON_DEVICE: AtomicBool = AtomicBool::new(true);
+
+fn get_language() -> String {
+    let lang = LANGUAGE.lock().unwrap();
+    if lang.is_empty() { "en-US".to_string() } else { lang.clone() }
+}
+
+/// Update tray icon based on listening state
+fn update_tray_icon(app: &AppHandle, listening: bool) {
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        let icon_bytes: &[u8] = if listening {
+            include_bytes!("../icons/tray-listening.png")
+        } else {
+            include_bytes!("../icons/tray-idle.png")
+        };
+        if let Ok(img) = Image::from_bytes(icon_bytes) {
+            let _ = tray.set_icon(Some(img));
+        }
+    }
+}
+
+#[tauri::command]
+fn set_dictation_settings(language: String, on_device: bool) -> Result<(), String> {
+    *LANGUAGE.lock().unwrap() = language;
+    ON_DEVICE.store(on_device, Ordering::SeqCst);
+    Ok(())
+}
 
 #[tauri::command]
 fn start_dictation(app: AppHandle) -> Result<(), String> {
@@ -18,14 +48,26 @@ fn start_dictation(app: AppHandle) -> Result<(), String> {
     }
     IS_LISTENING.store(true, Ordering::SeqCst);
     let _ = app.emit("listening-state", serde_json::json!({"listening": true}));
+    update_tray_icon(&app, true);
 
-    // Show HUD
+    // Show HUD and position at top-center
     if let Some(w) = app.get_webview_window("hud") {
+        // Position at top-center of primary monitor
+        if let Ok(Some(monitor)) = w.primary_monitor() {
+            let screen_size = monitor.size();
+            let scale = monitor.scale_factor();
+            let screen_w = screen_size.width as f64 / scale;
+            let hud_w = 320.0;
+            let x = (screen_w - hud_w) / 2.0;
+            let _ = w.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, 40.0)));
+        }
         let _ = w.show();
         let _ = w.set_focus();
     }
 
-    speech::start_recognition(app.clone());
+    let lang = get_language();
+    let on_device = ON_DEVICE.load(Ordering::SeqCst);
+    speech::start_recognition(app.clone(), &lang, on_device);
     Ok(())
 }
 
@@ -36,15 +78,14 @@ fn stop_dictation(app: AppHandle) -> Result<String, String> {
     }
     IS_LISTENING.store(false, Ordering::SeqCst);
     let _ = app.emit("listening-state", serde_json::json!({"listening": false}));
+    update_tray_icon(&app, false);
 
     let text = speech::stop_recognition();
 
-    // Hide HUD
     if let Some(w) = app.get_webview_window("hud") {
         let _ = w.hide();
     }
 
-    // Insert text at cursor
     if !text.is_empty() {
         insertion::insert_text(&text);
     }
@@ -103,6 +144,7 @@ pub fn run() {
             start_dictation,
             stop_dictation,
             toggle_dictation,
+            set_dictation_settings,
             open_microphone_settings,
             open_speech_settings,
         ])
@@ -112,8 +154,12 @@ pub fn run() {
             let toggle = MenuItem::with_id(app, "toggle", "Toggle Dictation (⌥Space)", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&toggle, &quit])?;
 
-            TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+            // Use idle tray icon initially
+            let idle_icon = Image::from_bytes(include_bytes!("../icons/tray-idle.png"))
+                .unwrap_or_else(|_| app.default_window_icon().unwrap().clone());
+
+            TrayIconBuilder::with_id("main-tray")
+                .icon(idle_icon)
                 .menu(&menu)
                 .on_menu_event(|app, event| {
                     match event.id.as_ref() {
