@@ -10,13 +10,18 @@ build: helper icons
 	npm run tauri build
 
 # Compile the Swift speech helper
+TRIPLE := $(shell rustc -vV | grep host | awk '{print $$2}')
+
 helper:
+	@mkdir -p src-tauri/binaries
 	swiftc speech-helper/main.swift \
-		-o src-tauri/koe-speech-helper \
+		-o src-tauri/binaries/koe-speech-helper-$(TRIPLE) \
 		-framework Speech \
 		-framework AVFoundation \
 		-framework Foundation \
 		-O
+	@# Also copy to legacy location for dev mode fallback
+	@cp src-tauri/binaries/koe-speech-helper-$(TRIPLE) src-tauri/koe-speech-helper
 
 # Generate placeholder icons (replace with real ones later)
 icons:
