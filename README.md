@@ -62,10 +62,17 @@ Tauri (Rust)          Swift Helper Process
 - **Speech Recognition** — for Apple's STT
 - **Accessibility** — for text insertion into other apps
 
+## Install
+
+```bash
+brew install --cask izyuumi/tap/koe
+```
+
 ## Roadmap
 
-- [ ] Streaming recognition (live transcript)
-- [ ] Language toggle (en-US ↔ ja-JP)
+- [x] Streaming recognition (live transcript)
+- [x] Language toggle (en-US ↔ ja-JP)
+- [x] On-device / cloud toggle
 - [ ] Personal dictionary
 - [ ] Filler word removal
 - [ ] App-specific profiles
