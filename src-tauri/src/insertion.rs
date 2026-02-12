@@ -3,6 +3,10 @@
 
 use std::process::Command;
 
+/// Time to wait before restoring the clipboard, giving the target app time to
+/// read the pasted content.
+const CLIPBOARD_RESTORE_DELAY_MS: u64 = 300;
+
 /// Insert text at the current cursor position in the frontmost app.
 /// Uses the clipboard + Cmd+V approach for maximum compatibility.
 /// Tracks NSPasteboard changeCount to avoid clobbering external clipboard writes.
@@ -22,7 +26,7 @@ pub fn insert_text(text: &str) {
     // Restore clipboard after a delay, but only if no external app touched it
     let old = old_clipboard;
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(300));
+        std::thread::sleep(std::time::Duration::from_millis(CLIPBOARD_RESTORE_DELAY_MS));
 
         // Check if changeCount is still what we set it to.
         // If another app wrote to the clipboard, changeCount will have incremented.

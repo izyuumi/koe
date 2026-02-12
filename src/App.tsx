@@ -3,6 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
+/** How long to keep the HUD visible after dictation stops (ms) */
+const HUD_HIDE_DELAY_MS = 1500;
+
 interface DictationState {
   isListening: boolean;
   transcript: string;
@@ -103,7 +106,7 @@ function App() {
           hideTimerRef.current = setTimeout(() => {
             getCurrentWebviewWindow().hide().catch(() => {});
             hideTimerRef.current = null;
-          }, 1500);
+          }, HUD_HIDE_DELAY_MS);
         }
       }),
       listen<{ message: string }>("speech-error", (e) => {
