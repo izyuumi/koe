@@ -3,5 +3,4 @@ dist/
 target/
 src-tauri/target/
 src-tauri/koe-speech-helper
-src-tauri/icons/
 *.DS_Store
