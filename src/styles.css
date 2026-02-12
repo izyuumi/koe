@@ -83,6 +83,25 @@ body {
   color: var(--text-muted);
 }
 
+.onboarding-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.onboarding-hint {
+  margin: 10px 0 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.onboarding-btn-done {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
 .onboarding-actions {
   display: flex;
   flex-wrap: wrap;
@@ -207,9 +226,21 @@ body {
   animation: partial-pulse 1.2s ease-in-out infinite;
 }
 
+/* Final text — brief highlight then settle */
+.transcript.final {
+  color: var(--green);
+  animation: final-flash 1.5s ease-out forwards;
+}
+
 @keyframes partial-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
+}
+
+@keyframes final-flash {
+  0% { color: var(--green); }
+  60% { color: var(--green); }
+  100% { color: var(--text); }
 }
 
 .controls {

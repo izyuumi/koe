@@ -82,9 +82,8 @@ fn stop_dictation(app: AppHandle) -> Result<String, String> {
 
     let text = speech::stop_recognition();
 
-    if let Some(w) = app.get_webview_window("hud") {
-        let _ = w.hide();
-    }
+    // Don't hide HUD here — the frontend handles the delayed hide
+    // so the user can see the final transcript briefly.
 
     if !text.is_empty() {
         insertion::insert_text(&text);
@@ -111,6 +110,11 @@ fn open_microphone_settings() -> Result<(), String> {
 #[tauri::command]
 fn open_speech_settings() -> Result<(), String> {
     open_system_settings("x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition")
+}
+
+#[tauri::command]
+fn open_accessibility_settings() -> Result<(), String> {
+    open_system_settings("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
 }
 
 fn open_system_settings(url: &str) -> Result<(), String> {
@@ -147,6 +151,7 @@ pub fn run() {
             set_dictation_settings,
             open_microphone_settings,
             open_speech_settings,
+            open_accessibility_settings,
         ])
         .setup(|app| {
             // Build tray menu
