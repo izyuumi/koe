@@ -9,7 +9,6 @@ use std::process::Command;
 pub fn insert_text(text: &str) {
     // Save current clipboard content and changeCount
     let old_clipboard = get_clipboard();
-    let pre_change_count = get_pasteboard_change_count();
 
     // Set clipboard to our text
     set_clipboard(text);

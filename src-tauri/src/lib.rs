@@ -4,7 +4,7 @@ mod insertion;
 use tauri::{
     AppHandle, Emitter, Manager,
     menu::{Menu, MenuItem},
-    tray::{TrayIconBuilder, TrayIcon},
+    tray::TrayIconBuilder,
     image::Image,
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
