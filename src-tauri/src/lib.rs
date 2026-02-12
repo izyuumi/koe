@@ -15,6 +15,10 @@ static IS_LISTENING: AtomicBool = AtomicBool::new(false);
 static LANGUAGE: Mutex<String> = Mutex::new(String::new());
 static ON_DEVICE: AtomicBool = AtomicBool::new(true);
 
+/// HUD window dimensions and positioning
+const HUD_WIDTH: f64 = 320.0;
+const HUD_TOP_OFFSET: f64 = 40.0;
+
 fn get_language() -> String {
     let lang = LANGUAGE.lock().unwrap();
     if lang.is_empty() { "en-US".to_string() } else { lang.clone() }
@@ -57,9 +61,8 @@ fn start_dictation(app: AppHandle) -> Result<(), String> {
             let screen_size = monitor.size();
             let scale = monitor.scale_factor();
             let screen_w = screen_size.width as f64 / scale;
-            let hud_w = 320.0;
-            let x = (screen_w - hud_w) / 2.0;
-            let _ = w.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, 40.0)));
+            let x = (screen_w - HUD_WIDTH) / 2.0;
+            let _ = w.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, HUD_TOP_OFFSET)));
         }
         let _ = w.show();
         let _ = w.set_focus();
