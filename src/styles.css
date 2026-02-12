@@ -6,6 +6,7 @@
   --accent: #55d0ff;
   --accent-dim: rgba(85, 208, 255, 0.22);
   --green: #48e37a;
+  --red: #ff5f57;
   --border: rgba(255, 255, 255, 0.12);
 }
 
@@ -35,6 +36,29 @@ body {
   margin: 8px;
   box-shadow: 0 14px 38px rgba(0, 0, 0, 0.42);
   animation: fade-in 0.2s ease-out;
+}
+
+/* Error banner */
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 95, 87, 0.15);
+  border: 1px solid rgba(255, 95, 87, 0.3);
+}
+
+.error-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.error-text {
+  font-size: 11px;
+  color: #ff9c94;
+  line-height: 1.3;
 }
 
 .onboarding {
@@ -120,6 +144,11 @@ body {
   animation: none;
 }
 
+.mic-indicator.error {
+  background: var(--red);
+  animation: pulse 1s ease-in-out infinite;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.6; transform: scale(1.2); }
@@ -172,6 +201,17 @@ body {
   font-style: italic;
 }
 
+/* Partial (streaming) text — pulsing opacity to show it's live */
+.transcript.partial {
+  color: var(--accent);
+  animation: partial-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes partial-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 .controls {
   display: flex;
   justify-content: space-between;
@@ -189,6 +229,13 @@ body {
   background: var(--accent-dim);
   color: var(--accent);
   font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.lang-badge:hover {
+  border-color: var(--accent);
 }
 
 .on-device-badge {
@@ -198,11 +245,22 @@ body {
   background: rgba(72, 227, 122, 0.18);
   color: var(--green);
   white-space: nowrap;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.on-device-badge:hover {
+  border-color: var(--green);
 }
 
 .on-device-badge.cloud {
   background: rgba(255, 159, 10, 0.2);
   color: #ff9f0a;
+}
+
+.on-device-badge.cloud:hover {
+  border-color: #ff9f0a;
 }
 
 .shortcut-hint {
@@ -234,7 +292,8 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   .hud,
   .mic-indicator,
-  .level-fill {
+  .level-fill,
+  .transcript.partial {
     animation: none;
     transition: none;
   }

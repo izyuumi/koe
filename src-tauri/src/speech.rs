@@ -1,5 +1,4 @@
-// Speech recognition using Apple's Speech framework via objc2
-// For MVP: record audio, then transcribe. Streaming comes later.
+// Speech recognition using Apple's Speech framework via a Swift helper process.
 
 use std::process::Command;
 use std::sync::Mutex;
@@ -9,30 +8,30 @@ static LAST_TRANSCRIPT: Mutex<Option<String>> = Mutex::new(None);
 static CURRENT_PROCESS: Mutex<Option<u32>> = Mutex::new(None);
 
 /// Start speech recognition by spawning a Swift helper process.
-/// The Swift helper does the actual SFSpeechRecognizer work since calling
-/// Speech framework from Rust FFI is extremely fragile.
-pub fn start_recognition(app: AppHandle) {
+pub fn start_recognition(app: AppHandle, language: &str, on_device: bool) {
     // Clear previous transcript
     *LAST_TRANSCRIPT.lock().unwrap() = None;
 
-    // Spawn the Swift speech helper
+    let lang = language.to_string();
+
     std::thread::spawn(move || {
         let helper_path = get_helper_path();
 
-        let child = Command::new(&helper_path)
-            .arg("--language")
-            .arg("en-US")
-            .arg("--on-device")
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn();
+        let mut cmd = Command::new(&helper_path);
+        cmd.arg("--language").arg(&lang);
+        if on_device {
+            cmd.arg("--on-device");
+        }
+        cmd.stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        let child = cmd.spawn();
 
         match child {
             Ok(mut child) => {
                 let pid = child.id();
                 *CURRENT_PROCESS.lock().unwrap() = Some(pid);
 
-                // Read stdout for transcript updates
                 if let Some(stdout) = child.stdout.take() {
                     use std::io::BufRead;
                     let reader = std::io::BufReader::new(stdout);
@@ -49,16 +48,39 @@ pub fn start_recognition(app: AppHandle) {
                                 if let Ok(level) = line.trim_start_matches("LEVEL:").trim().parse::<f64>() {
                                     let _ = app.emit("mic-level", serde_json::json!({"level": level}));
                                 }
+                            } else if line.starts_with("ERROR:") {
+                                let msg = line.trim_start_matches("ERROR:").trim();
+                                let _ = app.emit("speech-error", serde_json::json!({"message": msg}));
                             }
                         }
                     }
                 }
 
-                let _ = child.wait();
+                let status = child.wait();
                 *CURRENT_PROCESS.lock().unwrap() = None;
+
+                // Watchdog: detect unexpected exit (crash)
+                if let Ok(status) = status {
+                    if !status.success() {
+                        let code = status.code().unwrap_or(-1);
+                        let _ = app.emit("speech-error", serde_json::json!({
+                            "message": format!("Speech helper exited unexpectedly (code {})", code)
+                        }));
+                        let _ = app.emit("listening-state", serde_json::json!({"listening": false}));
+                    }
+                } else {
+                    let _ = app.emit("speech-error", serde_json::json!({
+                        "message": "Speech helper process lost"
+                    }));
+                    let _ = app.emit("listening-state", serde_json::json!({"listening": false}));
+                }
             }
             Err(e) => {
                 eprintln!("Failed to start speech helper: {}", e);
+                let _ = app.emit("speech-error", serde_json::json!({
+                    "message": format!("Failed to start speech helper: {}", e)
+                }));
+                let _ = app.emit("listening-state", serde_json::json!({"listening": false}));
             }
         }
     });
@@ -67,7 +89,6 @@ pub fn start_recognition(app: AppHandle) {
 /// Stop recognition by killing the helper process
 pub fn stop_recognition() -> String {
     if let Some(pid) = CURRENT_PROCESS.lock().unwrap().take() {
-        // Send SIGTERM to helper
         unsafe {
             libc::kill(pid as i32, libc::SIGTERM);
         }
@@ -81,25 +102,19 @@ pub fn stop_recognition() -> String {
 }
 
 fn get_helper_path() -> String {
-    // In dev: look for compiled helper next to the binary
-    // In production: it's bundled in Resources
     let exe = std::env::current_exe().unwrap();
     let dir = exe.parent().unwrap();
 
-    // Check next to binary first
     let helper = dir.join("koe-speech-helper");
     if helper.exists() {
         return helper.to_string_lossy().to_string();
     }
 
-    // Check in Resources (bundled app)
     let resources = dir.parent().unwrap().join("Resources").join("koe-speech-helper");
     if resources.exists() {
         return resources.to_string_lossy().to_string();
     }
 
-    // Dev mode: binary is at src-tauri/target/debug/koe,
-    // helper is at src-tauri/koe-speech-helper (two levels up)
     if let Some(target_dir) = dir.parent() {
         if let Some(src_tauri) = target_dir.parent() {
             let dev_helper = src_tauri.join("koe-speech-helper");
@@ -109,6 +124,5 @@ fn get_helper_path() -> String {
         }
     }
 
-    // Fallback: try PATH
     "koe-speech-helper".to_string()
 }
