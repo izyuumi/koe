@@ -5,7 +5,7 @@
       "release-type": "node",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
-      "initial-version": "0.0.1"
+      "initial-version": "0.1.0"
     }
   }
 }
