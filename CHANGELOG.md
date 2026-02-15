@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/izyuumi/koe/compare/v0.1.0...v0.1.1) (2026-02-15)
+
+
+### Bug Fixes
+
+* **ci:** use app bundle instead of dmg for universal build ([70c8067](https://github.com/izyuumi/koe/commit/70c8067471528c9d973b0ff3a890b6bc3e005ea4))
+
 ## 0.1.0 (2026-02-13)
 
 
