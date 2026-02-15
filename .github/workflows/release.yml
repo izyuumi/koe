@@ -76,12 +76,12 @@ jobs:
         run: npm install -g @tauri-apps/cli@^2
 
       - name: Build Tauri app (aarch64)
-        run: npx tauri build --target aarch64-apple-darwin --bundles dmg
+        run: npx tauri build --target aarch64-apple-darwin --bundles app
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""
 
       - name: Build Tauri app (x86_64)
-        run: npx tauri build --target x86_64-apple-darwin --bundles dmg
+        run: npx tauri build --target x86_64-apple-darwin --bundles app
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""
 
@@ -101,6 +101,14 @@ jobs:
             "$AARCH64_APP/Contents/MacOS/Koe" \
             "$X86_APP/Contents/MacOS/Koe" \
             -output "$UNIVERSAL_APP/Contents/MacOS/Koe"
+
+          # Merge sidecar binary if present
+          if [ -f "$AARCH64_APP/Contents/MacOS/koe-speech-helper" ] && [ -f "$X86_APP/Contents/MacOS/koe-speech-helper" ]; then
+            lipo -create \
+              "$AARCH64_APP/Contents/MacOS/koe-speech-helper" \
+              "$X86_APP/Contents/MacOS/koe-speech-helper" \
+              -output "$UNIVERSAL_APP/Contents/MacOS/koe-speech-helper"
+          fi
 
           # Create DMG
           DMG_NAME="Koe_${VERSION}_universal.dmg"
