@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/izyuumi/koe/compare/v0.1.1...v0.1.2) (2026-02-15)
+
+
+### Bug Fixes
+
+* **ci:** skip lipo on sidecar binary (already universal) ([2d5eb69](https://github.com/izyuumi/koe/commit/2d5eb697c192acaa766277463e3c266be28daee1))
+
 ## [0.1.1](https://github.com/izyuumi/koe/compare/v0.1.0...v0.1.1) (2026-02-15)
 
 
