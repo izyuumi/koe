@@ -102,13 +102,7 @@ jobs:
             "$X86_APP/Contents/MacOS/Koe" \
             -output "$UNIVERSAL_APP/Contents/MacOS/Koe"
 
-          # Merge sidecar binary if present
-          if [ -f "$AARCH64_APP/Contents/MacOS/koe-speech-helper" ] && [ -f "$X86_APP/Contents/MacOS/koe-speech-helper" ]; then
-            lipo -create \
-              "$AARCH64_APP/Contents/MacOS/koe-speech-helper" \
-              "$X86_APP/Contents/MacOS/koe-speech-helper" \
-              -output "$UNIVERSAL_APP/Contents/MacOS/koe-speech-helper"
-          fi
+          # Sidecar binary is already universal (built earlier), no lipo needed
 
           # Create DMG
           DMG_NAME="Koe_${VERSION}_universal.dmg"
