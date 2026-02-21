@@ -10,10 +10,25 @@ use tauri::{
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::process::Command;
 
 static IS_LISTENING: AtomicBool = AtomicBool::new(false);
 static LANGUAGE: Mutex<String> = Mutex::new(String::new());
 static ON_DEVICE: AtomicBool = AtomicBool::new(true);
+static SOUND_ENABLED: AtomicBool = AtomicBool::new(true);
+
+/// Play a macOS system sound asynchronously.
+/// Uses afplay so it doesn't block the main thread.
+fn play_sound(name: &str) {
+    if !SOUND_ENABLED.load(Ordering::SeqCst) {
+        return;
+    }
+    let path = format!("/System/Library/Sounds/{}.aiff", name);
+    std::thread::spawn(move || {
+        let _ = Command::new("afplay").arg(&path).output();
+    });
+}
+
 
 /// HUD window dimensions and positioning
 const HUD_WIDTH: f64 = 320.0;
@@ -39,6 +54,12 @@ fn update_tray_icon(app: &AppHandle, listening: bool) {
 }
 
 #[tauri::command]
+fn set_sound_enabled(enabled: bool) -> Result<(), String> {
+    SOUND_ENABLED.store(enabled, Ordering::SeqCst);
+    Ok(())
+}
+
+#[tauri::command]
 fn set_dictation_settings(language: String, on_device: bool) -> Result<(), String> {
     *LANGUAGE.lock().unwrap() = language;
     ON_DEVICE.store(on_device, Ordering::SeqCst);
@@ -53,6 +74,7 @@ fn start_dictation(app: AppHandle) -> Result<(), String> {
     IS_LISTENING.store(true, Ordering::SeqCst);
     let _ = app.emit("listening-state", serde_json::json!({"listening": true}));
     update_tray_icon(&app, true);
+    play_sound("Pop");
 
     // Show HUD and position at top-center
     if let Some(w) = app.get_webview_window("hud") {
@@ -82,6 +104,7 @@ fn stop_dictation(app: AppHandle) -> Result<String, String> {
     IS_LISTENING.store(false, Ordering::SeqCst);
     let _ = app.emit("listening-state", serde_json::json!({"listening": false}));
     update_tray_icon(&app, false);
+    play_sound("Tink");
 
     let text = speech::stop_recognition();
 
@@ -152,6 +175,7 @@ pub fn run() {
             stop_dictation,
             toggle_dictation,
             set_dictation_settings,
+            set_sound_enabled,
             open_microphone_settings,
             open_speech_settings,
             open_accessibility_settings,
