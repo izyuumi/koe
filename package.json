@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit && cd src-tauri && cargo clippy -- -D warnings",
+    "fmt": "cd src-tauri && cargo fmt --check",
+    "fmt:fix": "cd src-tauri && cargo fmt"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
