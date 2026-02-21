@@ -1,5 +1,8 @@
 # Koe (声)
 
+[![CI](https://github.com/izyuumi/koe/actions/workflows/ci.yml/badge.svg)](https://github.com/izyuumi/koe/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 System-wide dictation for macOS. No account, no cloud (when possible), just your voice → text.
 
 ## Features
