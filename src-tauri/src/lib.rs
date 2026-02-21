@@ -88,8 +88,10 @@ fn stop_dictation(app: AppHandle) -> Result<String, String> {
     // Don't hide HUD here — the frontend handles the delayed hide
     // so the user can see the final transcript briefly.
 
+    let text = text.trim().to_string();
     if !text.is_empty() {
-        insertion::insert_text(&text);
+        // Append a trailing space so consecutive dictations chain naturally
+        insertion::insert_text(&format!("{text} "));
     }
 
     Ok(text)
