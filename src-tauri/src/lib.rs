@@ -199,7 +199,9 @@ pub fn run() {
                             let _ = toggle_dictation(app.clone());
                         }
                         "copy-last" => {
-                            let _ = copy_last_transcript();
+                            if let Err(e) = copy_last_transcript() {
+                                eprintln!("[koe] copy_last_transcript failed: {e}");
+                            }
                         }
                         _ => {}
                     }
