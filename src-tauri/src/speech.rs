@@ -102,19 +102,30 @@ pub fn stop_recognition() -> String {
 }
 
 fn get_helper_path() -> String {
-    let exe = std::env::current_exe().unwrap();
-    let dir = exe.parent().unwrap();
+    let exe = match std::env::current_exe() {
+        Ok(e) => e,
+        Err(_) => return "koe-speech-helper".to_string(),
+    };
+    let dir = match exe.parent() {
+        Some(d) => d,
+        None => return "koe-speech-helper".to_string(),
+    };
 
+    // Check alongside the binary
     let helper = dir.join("koe-speech-helper");
     if helper.exists() {
         return helper.to_string_lossy().to_string();
     }
 
-    let resources = dir.parent().unwrap().join("Resources").join("koe-speech-helper");
-    if resources.exists() {
-        return resources.to_string_lossy().to_string();
+    // Check in Resources (macOS .app bundle)
+    if let Some(parent) = dir.parent() {
+        let resources = parent.join("Resources").join("koe-speech-helper");
+        if resources.exists() {
+            return resources.to_string_lossy().to_string();
+        }
     }
 
+    // Check in dev mode (src-tauri/)
     if let Some(target_dir) = dir.parent() {
         if let Some(src_tauri) = target_dir.parent() {
             let dev_helper = src_tauri.join("koe-speech-helper");
@@ -124,5 +135,6 @@ fn get_helper_path() -> String {
         }
     }
 
+    // Fallback to PATH lookup
     "koe-speech-helper".to_string()
 }
