@@ -135,6 +135,7 @@ function App() {
 
   const displayText = state.partialResult || state.transcript;
   const isPartial = !!state.partialResult;
+  const wordCount = displayText ? displayText.trim().split(/\s+/).filter(Boolean).length : 0;
   const micLevelWidth = `${Math.max(0, Math.min(state.micLevel, 1)) * 100}%`;
   const statusText = state.error
     ? "Error"
@@ -266,6 +267,11 @@ function App() {
         <button type="button" className="lang-badge" onClick={toggleLanguage} title="Toggle language">
           {language}
         </button>
+        {wordCount > 0 && (
+          <span className="word-count" aria-label={`${wordCount} words`}>
+            {wordCount} {wordCount === 1 ? "word" : "words"}
+          </span>
+        )}
         <span className="shortcut-hint">
           <kbd>⌥</kbd> + <kbd>Space</kbd>
         </span>
