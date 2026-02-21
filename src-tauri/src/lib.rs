@@ -158,9 +158,11 @@ pub fn run() {
         ])
         .setup(|app| {
             // Build tray menu
+            let version = app.package_info().version.to_string();
+            let version_label = MenuItem::with_id(app, "version", &format!("Koe v{version}"), false, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Koe", true, None::<&str>)?;
             let toggle = MenuItem::with_id(app, "toggle", "Toggle Dictation (⌥Space)", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&toggle, &quit])?;
+            let menu = Menu::with_items(app, &[&version_label, &toggle, &quit])?;
 
             // Use idle tray icon initially
             let idle_icon = Image::from_bytes(include_bytes!("../icons/tray-idle.png"))
