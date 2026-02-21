@@ -9,6 +9,14 @@ static CURRENT_PROCESS: Mutex<Option<u32>> = Mutex::new(None);
 
 /// Start speech recognition by spawning a Swift helper process.
 pub fn start_recognition(app: AppHandle, language: &str, on_device: bool) {
+    // Kill any existing speech helper to prevent duplicates (#19)
+    if let Some(pid) = CURRENT_PROCESS.lock().unwrap().take() {
+        unsafe {
+            libc::kill(pid as i32, libc::SIGTERM);
+        }
+        eprintln!("Killed existing speech helper (pid {})", pid);
+    }
+
     // Clear previous transcript
     *LAST_TRANSCRIPT.lock().unwrap() = None;
 
@@ -102,21 +110,27 @@ pub fn stop_recognition() -> String {
 }
 
 fn get_helper_path() -> String {
-    let exe = std::env::current_exe().unwrap();
-    let dir = exe.parent().unwrap();
+    let exe = match std::env::current_exe() {
+        Ok(e) => e,
+        Err(_) => return "koe-speech-helper".to_string(),
+    };
+    let dir = match exe.parent() {
+        Some(d) => d,
+        None => return "koe-speech-helper".to_string(),
+    };
 
     let helper = dir.join("koe-speech-helper");
     if helper.exists() {
         return helper.to_string_lossy().to_string();
     }
 
-    let resources = dir.parent().unwrap().join("Resources").join("koe-speech-helper");
-    if resources.exists() {
-        return resources.to_string_lossy().to_string();
-    }
+    if let Some(parent) = dir.parent() {
+        let resources = parent.join("Resources").join("koe-speech-helper");
+        if resources.exists() {
+            return resources.to_string_lossy().to_string();
+        }
 
-    if let Some(target_dir) = dir.parent() {
-        if let Some(src_tauri) = target_dir.parent() {
+        if let Some(src_tauri) = parent.parent() {
             let dev_helper = src_tauri.join("koe-speech-helper");
             if dev_helper.exists() {
                 return dev_helper.to_string_lossy().to_string();
