@@ -1,6 +1,30 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
 target/
 src-tauri/target/
+src-tauri/binaries/
+
+# Speech helper (built by Makefile)
 src-tauri/koe-speech-helper
+
+# macOS
 *.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+
+# Debug
+npm-debug.log*
