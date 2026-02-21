@@ -70,7 +70,9 @@ fn start_dictation(app: AppHandle) -> Result<(), String> {
 
     let lang = get_language();
     let on_device = ON_DEVICE.load(Ordering::SeqCst);
-    speech::start_recognition(app.clone(), &lang, on_device);
+    // "auto" mode: pass empty string so the speech helper uses system default
+    let effective_lang = if lang == "auto" { String::new() } else { lang };
+    speech::start_recognition(app.clone(), &effective_lang, on_device);
     Ok(())
 }
 
