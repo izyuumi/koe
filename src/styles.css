@@ -294,6 +294,13 @@ body {
   border-color: #ff9f0a;
 }
 
+.word-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .shortcut-hint {
   font-size: 11px;
   color: var(--text-muted);
