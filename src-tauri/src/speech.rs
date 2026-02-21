@@ -8,7 +8,16 @@ static LAST_TRANSCRIPT: Mutex<Option<String>> = Mutex::new(None);
 static CURRENT_PROCESS: Mutex<Option<u32>> = Mutex::new(None);
 
 /// Start speech recognition by spawning a Swift helper process.
+/// If a helper is already running, it will be killed first.
 pub fn start_recognition(app: AppHandle, language: &str, on_device: bool) {
+    // Kill any existing helper process to prevent duplicates
+    if let Some(pid) = CURRENT_PROCESS.lock().unwrap().take() {
+        eprintln!("[koe] Killing existing speech helper (pid {})", pid);
+        unsafe {
+            libc::kill(pid as i32, libc::SIGTERM);
+        }
+    }
+
     // Clear previous transcript
     *LAST_TRANSCRIPT.lock().unwrap() = None;
 
