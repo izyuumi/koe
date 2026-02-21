@@ -1,4 +1,4 @@
-.PHONY: all dev build helper icons clean
+.PHONY: all dev build helper icons clean lint fmt
 
 all: helper icons
 	cd src-tauri && cargo build
@@ -34,6 +34,14 @@ icons:
 		sips -z 256 256 -s format png /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns --out src-tauri/icons/icon.png 2>/dev/null || true; \
 		cp src-tauri/icons/32x32.png src-tauri/icons/tray.png 2>/dev/null || true; \
 	fi
+
+lint:
+	cd src-tauri && cargo clippy -- -D warnings
+	npx tsc --noEmit
+
+fmt:
+	cd src-tauri && cargo fmt --check
+	@echo "Rust formatting OK"
 
 clean:
 	rm -f src-tauri/koe-speech-helper
