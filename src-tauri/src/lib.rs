@@ -160,7 +160,9 @@ pub fn run() {
             // Build tray menu
             let quit = MenuItem::with_id(app, "quit", "Quit Koe", true, None::<&str>)?;
             let toggle = MenuItem::with_id(app, "toggle", "Toggle Dictation (⌥Space)", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&toggle, &quit])?;
+            let lang_en = MenuItem::with_id(app, "lang-en", "🇺🇸 English", true, None::<&str>)?;
+            let lang_ja = MenuItem::with_id(app, "lang-ja", "🇯🇵 Japanese", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&toggle, &lang_en, &lang_ja, &quit])?;
 
             // Use idle tray icon initially
             let idle_icon = Image::from_bytes(include_bytes!("../icons/tray-idle.png"))
@@ -174,6 +176,14 @@ pub fn run() {
                         "quit" => app.exit(0),
                         "toggle" => {
                             let _ = toggle_dictation(app.clone());
+                        }
+                        "lang-en" => {
+                            let _ = set_dictation_settings("en-US".to_string(), ON_DEVICE.load(Ordering::SeqCst));
+                            let _ = app.emit("language-changed", serde_json::json!({"language": "en-US"}));
+                        }
+                        "lang-ja" => {
+                            let _ = set_dictation_settings("ja-JP".to_string(), ON_DEVICE.load(Ordering::SeqCst));
+                            let _ = app.emit("language-changed", serde_json::json!({"language": "ja-JP"}));
                         }
                         _ => {}
                     }
