@@ -67,16 +67,22 @@ fn get_clipboard() -> Option<String> {
 }
 
 fn set_clipboard(text: &str) {
-    let mut child = Command::new("pbcopy")
+    let child = Command::new("pbcopy")
         .stdin(std::process::Stdio::piped())
-        .spawn()
-        .expect("failed to run pbcopy");
+        .spawn();
 
-    if let Some(mut stdin) = child.stdin.take() {
-        use std::io::Write;
-        let _ = stdin.write_all(text.as_bytes());
+    match child {
+        Ok(mut child) => {
+            if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write;
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            let _ = child.wait();
+        }
+        Err(e) => {
+            eprintln!("[koe] Failed to run pbcopy: {e}");
+        }
     }
-    let _ = child.wait();
 }
 
 fn paste_via_applescript() {
