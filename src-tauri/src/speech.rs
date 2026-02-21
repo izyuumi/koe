@@ -26,7 +26,9 @@ pub fn start_recognition(app: AppHandle, language: &str, on_device: bool) {
         let helper_path = get_helper_path();
 
         let mut cmd = Command::new(&helper_path);
-        cmd.arg("--language").arg(&lang);
+        if !lang.is_empty() {
+            cmd.arg("--language").arg(&lang);
+        }
         if on_device {
             cmd.arg("--on-device");
         }
