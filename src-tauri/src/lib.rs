@@ -14,6 +14,7 @@ use std::sync::Mutex;
 static IS_LISTENING: AtomicBool = AtomicBool::new(false);
 static LANGUAGE: Mutex<String> = Mutex::new(String::new());
 static ON_DEVICE: AtomicBool = AtomicBool::new(true);
+static LAST_TRANSCRIPT: Mutex<String> = Mutex::new(String::new());
 
 /// HUD window dimensions and positioning
 const HUD_WIDTH: f64 = 320.0;
@@ -36,6 +37,25 @@ fn update_tray_icon(app: &AppHandle, listening: bool) {
             let _ = tray.set_icon(Some(img));
         }
     }
+}
+
+#[tauri::command]
+fn copy_last_transcript() -> Result<String, String> {
+    let text = LAST_TRANSCRIPT.lock().unwrap().clone();
+    if text.is_empty() {
+        return Err("No transcript available".to_string());
+    }
+    // Copy to clipboard using pbcopy
+    let mut child = Command::new("pbcopy")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to run pbcopy: {e}"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        let _ = stdin.write_all(text.as_bytes());
+    }
+    let _ = child.wait();
+    Ok(text)
 }
 
 #[tauri::command]
@@ -89,6 +109,7 @@ fn stop_dictation(app: AppHandle) -> Result<String, String> {
     // so the user can see the final transcript briefly.
 
     if !text.is_empty() {
+        *LAST_TRANSCRIPT.lock().unwrap() = text.clone();
         insertion::insert_text(&text);
     }
 
@@ -152,6 +173,7 @@ pub fn run() {
             stop_dictation,
             toggle_dictation,
             set_dictation_settings,
+            copy_last_transcript,
             open_microphone_settings,
             open_speech_settings,
             open_accessibility_settings,
@@ -160,7 +182,8 @@ pub fn run() {
             // Build tray menu
             let quit = MenuItem::with_id(app, "quit", "Quit Koe", true, None::<&str>)?;
             let toggle = MenuItem::with_id(app, "toggle", "Toggle Dictation (⌥Space)", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&toggle, &quit])?;
+            let copy_last = MenuItem::with_id(app, "copy-last", "Copy Last Transcript", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&toggle, &copy_last, &quit])?;
 
             // Use idle tray icon initially
             let idle_icon = Image::from_bytes(include_bytes!("../icons/tray-idle.png"))
@@ -174,6 +197,9 @@ pub fn run() {
                         "quit" => app.exit(0),
                         "toggle" => {
                             let _ = toggle_dictation(app.clone());
+                        }
+                        "copy-last" => {
+                            let _ = copy_last_transcript();
                         }
                         _ => {}
                     }
