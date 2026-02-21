@@ -228,7 +228,13 @@ function App() {
 
       <div className="status-row">
         <div className="status-group">
-          <div className={`mic-indicator ${state.error ? "error" : state.isListening ? "" : "idle"}`} />
+          <div
+          className={`mic-indicator ${state.error ? "error" : state.isListening ? "" : "idle"}`}
+          style={state.isListening ? {
+            transform: `scale(${1 + state.micLevel * 0.5})`,
+            opacity: 0.6 + state.micLevel * 0.4,
+          } : undefined}
+        />
           <span className="status-text" aria-live="polite">
             {statusText}
           </span>

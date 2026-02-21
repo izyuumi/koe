@@ -155,7 +155,7 @@ body {
   height: 10px;
   border-radius: 50%;
   background: var(--green);
-  animation: pulse 1.5s ease-in-out infinite;
+  transition: transform 0.1s ease-out, opacity 0.1s ease-out;
 }
 
 .mic-indicator.idle {
