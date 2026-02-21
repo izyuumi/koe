@@ -44,6 +44,17 @@ function App() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Dismiss HUD with Escape key (#18)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        getCurrentWebviewWindow().hide().catch(() => {});
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   // Persist settings to localStorage
   useEffect(() => {
     localStorage.setItem("koe.language", language);
@@ -228,7 +239,13 @@ function App() {
 
       <div className="status-row">
         <div className="status-group">
-          <div className={`mic-indicator ${state.error ? "error" : state.isListening ? "" : "idle"}`} />
+          <div
+            className={`mic-indicator ${state.error ? "error" : state.isListening ? "active" : "idle"}`}
+            style={state.isListening && !state.error ? {
+              transform: `scale(${1 + state.micLevel * 0.5})`,
+              opacity: 0.6 + state.micLevel * 0.4,
+            } : undefined}
+          />
           <span className="status-text" aria-live="polite">
             {statusText}
           </span>
