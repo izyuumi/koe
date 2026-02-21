@@ -53,6 +53,17 @@ function App() {
     localStorage.setItem("koe.onDevice", String(isOnDevice));
   }, [isOnDevice]);
 
+  // Dismiss HUD on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        getCurrentWebviewWindow().hide().catch(() => {});
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   // Push language setting to backend
   const updateBackendSettings = useCallback(async () => {
     try {
