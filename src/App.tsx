@@ -20,6 +20,8 @@ function App() {
   });
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load persisted settings
   const [language, setLanguage] = useState<string>(() => {
@@ -88,6 +90,10 @@ function App() {
             clearTimeout(hideTimerRef.current);
             hideTimerRef.current = null;
           }
+          // Start elapsed timer
+          setElapsed(0);
+          if (elapsedRef.current) clearInterval(elapsedRef.current);
+          elapsedRef.current = setInterval(() => setElapsed((t) => t + 1), 1000);
           setState((s) => ({
             ...s,
             isListening: true,
@@ -97,6 +103,11 @@ function App() {
             micLevel: 0,
           }));
         } else {
+          // Stop elapsed timer
+          if (elapsedRef.current) {
+            clearInterval(elapsedRef.current);
+            elapsedRef.current = null;
+          }
           // Stopping: keep HUD visible briefly so user sees final text
           setState((s) => ({
             ...s,
@@ -122,6 +133,7 @@ function App() {
     return () => {
       unlisten.then((fns) => fns.forEach((fn) => fn()));
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      if (elapsedRef.current) clearInterval(elapsedRef.current);
     };
   }, []);
 
@@ -131,6 +143,12 @@ function App() {
 
   const toggleOnDevice = () => {
     setIsOnDevice((v) => !v);
+  };
+
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
   const displayText = state.partialResult || state.transcript;
@@ -246,6 +264,11 @@ function App() {
             style={{ width: micLevelWidth }}
           />
         </div>
+        {state.isListening && (
+          <span className="elapsed-timer" aria-label={`Elapsed time: ${formatTime(elapsed)}`}>
+            {formatTime(elapsed)}
+          </span>
+        )}
         <button
           type="button"
           className={`on-device-badge ${isOnDevice ? "" : "cloud"}`}

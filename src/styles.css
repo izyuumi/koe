@@ -294,6 +294,14 @@ body {
   border-color: #ff9f0a;
 }
 
+.elapsed-timer {
+  font-size: 11px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .shortcut-hint {
   font-size: 11px;
   color: var(--text-muted);
