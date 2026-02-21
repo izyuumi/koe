@@ -4,6 +4,12 @@ version = "0.1.0"
 description = "System-wide dictation for macOS"
 authors = ["yumi"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/izyuumi/koe"
+homepage = "https://github.com/izyuumi/koe"
+readme = "../README.md"
+keywords = ["dictation", "speech-to-text", "macos", "tauri"]
+categories = ["accessibility"]
 
 [lib]
 name = "koe_lib"
