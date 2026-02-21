@@ -136,8 +136,12 @@ function App() {
     };
   }, []);
 
+  const LANGUAGES = ["en-US", "ja-JP", "auto"] as const;
   const toggleLanguage = () => {
-    setLanguage((l) => (l === "en-US" ? "ja-JP" : "en-US"));
+    setLanguage((l) => {
+      const idx = LANGUAGES.indexOf(l as typeof LANGUAGES[number]);
+      return LANGUAGES[(idx + 1) % LANGUAGES.length];
+    });
   };
 
   const toggleOnDevice = () => {
@@ -280,8 +284,8 @@ function App() {
       </div>
 
       <div className="controls">
-        <button type="button" className="lang-badge" onClick={toggleLanguage} title="Toggle language">
-          {language}
+        <button type="button" className="lang-badge" onClick={toggleLanguage} title="Toggle language (en-US → ja-JP → Auto)">
+          {language === "auto" ? "Auto 🌐" : language}
         </button>
         <span className="shortcut-hint">
           <kbd>⌥</kbd> + <kbd>Space</kbd>
