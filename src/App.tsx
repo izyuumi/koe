@@ -28,6 +28,12 @@ function App() {
   const [isOnDevice, setIsOnDevice] = useState<boolean>(() => {
     return localStorage.getItem("koe.onDevice") !== "false";
   });
+  const [transcriptHistory, setTranscriptHistory] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("koe.history") || "[]");
+    } catch { return []; }
+  });
+  const [showHistory, setShowHistory] = useState(false);
 
   const [state, setState] = useState<DictationState>({
     isListening: false,
@@ -88,6 +94,13 @@ function App() {
           transcript: e.payload.text,
           partialResult: "",
         }));
+        if (e.payload.text.trim()) {
+          setTranscriptHistory((prev) => {
+            const updated = [e.payload.text.trim(), ...prev].slice(0, 20);
+            localStorage.setItem("koe.history", JSON.stringify(updated));
+            return updated;
+          });
+        }
       }),
       listen<{ level: number }>("mic-level", (e) => {
         setState((s) => ({ ...s, micLevel: e.payload.level }));
@@ -283,10 +296,45 @@ function App() {
         <button type="button" className="lang-badge" onClick={toggleLanguage} title="Toggle language">
           {language}
         </button>
+        <button
+          type="button"
+          className="delay-badge"
+          onClick={() => setShowHistory((v) => !v)}
+          title="Transcript history"
+        >
+          📋 {transcriptHistory.length}
+        </button>
         <span className="shortcut-hint">
           <kbd>⌥</kbd> + <kbd>Space</kbd>
         </span>
       </div>
+
+      {showHistory && transcriptHistory.length > 0 && (
+        <div className="history-panel">
+          <div className="history-header">
+            <span>Recent Transcripts</span>
+            <button type="button" onClick={() => {
+              setTranscriptHistory([]);
+              localStorage.removeItem("koe.history");
+            }}>Clear</button>
+          </div>
+          <div className="history-list">
+            {transcriptHistory.slice(0, 10).map((text, i) => (
+              <button
+                key={i}
+                type="button"
+                className="history-item"
+                onClick={() => {
+                  navigator.clipboard.writeText(text);
+                }}
+                title="Click to copy"
+              >
+                {text}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
