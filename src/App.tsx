@@ -50,6 +50,11 @@ function App() {
       if (e.key === "Escape") {
         getCurrentWebviewWindow().hide().catch(() => {});
       }
+      // Cmd+L or Ctrl+L to toggle language
+      if (e.key === "l" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setLanguage((l) => (l === "en-US" ? "ja-JP" : "en-US"));
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -280,7 +285,7 @@ function App() {
       </div>
 
       <div className="controls">
-        <button type="button" className="lang-badge" onClick={toggleLanguage} title="Toggle language">
+        <button type="button" className="lang-badge" onClick={toggleLanguage} title="Toggle language (⌘L)">
           {language}
         </button>
         <span className="shortcut-hint">
