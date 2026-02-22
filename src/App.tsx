@@ -3,8 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
-/** How long to keep the HUD visible after dictation stops (ms) */
-const HUD_HIDE_DELAY_MS = 1500;
+/** Default: how long to keep the HUD visible after dictation stops (ms) */
+const DEFAULT_HIDE_DELAY_MS = 1500;
 
 interface DictationState {
   isListening: boolean;
@@ -27,6 +27,10 @@ function App() {
   });
   const [isOnDevice, setIsOnDevice] = useState<boolean>(() => {
     return localStorage.getItem("koe.onDevice") !== "false";
+  });
+  const [hideDelay, setHideDelay] = useState<number>(() => {
+    const stored = localStorage.getItem("koe.hideDelay");
+    return stored ? Number(stored) : DEFAULT_HIDE_DELAY_MS;
   });
 
   const [state, setState] = useState<DictationState>({
@@ -63,6 +67,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem("koe.onDevice", String(isOnDevice));
   }, [isOnDevice]);
+
+  useEffect(() => {
+    localStorage.setItem("koe.hideDelay", String(hideDelay));
+  }, [hideDelay]);
 
   // Push language setting to backend
   const updateBackendSettings = useCallback(async () => {
@@ -117,7 +125,7 @@ function App() {
           hideTimerRef.current = setTimeout(() => {
             getCurrentWebviewWindow().hide().catch(() => {});
             hideTimerRef.current = null;
-          }, HUD_HIDE_DELAY_MS);
+          }, hideDelay);
         }
       }),
       listen<{ message: string }>("speech-error", (e) => {
@@ -282,6 +290,19 @@ function App() {
       <div className="controls">
         <button type="button" className="lang-badge" onClick={toggleLanguage} title="Toggle language">
           {language}
+        </button>
+        <button
+          type="button"
+          className="delay-badge"
+          onClick={() => {
+            // Cycle through: 1s → 2s → 3s → 5s → 1s
+            const steps = [1000, 2000, 3000, 5000];
+            const next = steps[(steps.indexOf(hideDelay) + 1) % steps.length] ?? 1500;
+            setHideDelay(next);
+          }}
+          title={`Auto-hide delay: ${hideDelay / 1000}s (click to change)`}
+        >
+          {(hideDelay / 1000).toFixed(0)}s
         </button>
         <span className="shortcut-hint">
           <kbd>⌥</kbd> + <kbd>Space</kbd>
