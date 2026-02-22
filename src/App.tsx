@@ -144,6 +144,7 @@ function App() {
     setIsOnDevice((v) => !v);
   };
 
+  const [copied, setCopied] = useState(false);
   const displayText = state.partialResult || state.transcript;
   const isPartial = !!state.partialResult;
   const micLevelWidth = `${Math.max(0, Math.min(state.micLevel, 1)) * 100}%`;
@@ -273,9 +274,20 @@ function App() {
         </button>
       </div>
 
-      <div className="transcript-wrap">
+      <div
+        className="transcript-wrap"
+        onDoubleClick={() => {
+          if (displayText) {
+            navigator.clipboard.writeText(displayText).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            });
+          }
+        }}
+        title="Double-click to copy"
+      >
         <div className={`transcript ${displayText ? (isPartial ? "partial" : "final") : "placeholder"}`}>
-          {displayText || transcriptHint}
+          {copied ? "✓ Copied!" : displayText || transcriptHint}
         </div>
       </div>
 
