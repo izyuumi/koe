@@ -28,6 +28,10 @@ function App() {
   const [isOnDevice, setIsOnDevice] = useState<boolean>(() => {
     return localStorage.getItem("koe.onDevice") !== "false";
   });
+  const [fontSize, setFontSize] = useState<number>(() => {
+    const stored = localStorage.getItem("koe.fontSize");
+    return stored ? Number(stored) : 14;
+  });
 
   const [state, setState] = useState<DictationState>({
     isListening: false,
@@ -63,6 +67,13 @@ function App() {
   useEffect(() => {
     localStorage.setItem("koe.onDevice", String(isOnDevice));
   }, [isOnDevice]);
+
+  useEffect(() => {
+    localStorage.setItem("koe.fontSize", String(fontSize));
+  }, [fontSize]);
+
+  const increaseFontSize = () => setFontSize((s) => Math.min(s + 2, 28));
+  const decreaseFontSize = () => setFontSize((s) => Math.max(s - 2, 10));
 
   // Push language setting to backend
   const updateBackendSettings = useCallback(async () => {
@@ -274,7 +285,10 @@ function App() {
       </div>
 
       <div className="transcript-wrap">
-        <div className={`transcript ${displayText ? (isPartial ? "partial" : "final") : "placeholder"}`}>
+        <div
+          className={`transcript ${displayText ? (isPartial ? "partial" : "final") : "placeholder"}`}
+          style={{ fontSize: `${fontSize}px` }}
+        >
           {displayText || transcriptHint}
         </div>
       </div>
@@ -283,6 +297,14 @@ function App() {
         <button type="button" className="lang-badge" onClick={toggleLanguage} title="Toggle language">
           {language}
         </button>
+        <div className="font-size-controls">
+          <button type="button" className="font-size-btn" onClick={decreaseFontSize} title="Decrease font size" aria-label="Decrease font size">
+            A−
+          </button>
+          <button type="button" className="font-size-btn" onClick={increaseFontSize} title="Increase font size" aria-label="Increase font size">
+            A+
+          </button>
+        </div>
         <span className="shortcut-hint">
           <kbd>⌥</kbd> + <kbd>Space</kbd>
         </span>
