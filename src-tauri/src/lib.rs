@@ -91,7 +91,9 @@ fn stop_dictation(app: AppHandle) -> Result<String, String> {
     let text = text.trim().to_string();
     if !text.is_empty() {
         // Append a trailing space so consecutive dictations chain naturally
-        insertion::insert_text(&format!("{text} "));
+        let text_with_space = format!("{text} ");
+        insertion::insert_text(&text_with_space);
+        return Ok(text_with_space);
     }
 
     Ok(text)
