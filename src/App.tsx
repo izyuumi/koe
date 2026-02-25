@@ -230,7 +230,7 @@ function App() {
 
   // Normal HUD (visible during dictation)
   return (
-    <div className="hud" role="application" aria-label="Koe dictation HUD">
+    <div className="hud" role="application" aria-label="Koe dictation HUD" data-tauri-drag-region>
       {state.error ? (
         <div className="error-banner" role="alert">
           <span className="error-icon">⚠</span>
