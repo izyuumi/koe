@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/izyuumi/koe/compare/v0.1.2...v0.2.0) (2026-02-25)
+
+
+### Features
+
+* fix panics, dynamic mic indicator, duplicate process guard, escape dismiss ([#36](https://github.com/izyuumi/koe/issues/36)) ([d47bb55](https://github.com/izyuumi/koe/commit/d47bb55167a34932ac27f6b758252191d631628f))
+* **koe:** auto-copy transcript to clipboard on dictation end ([#45](https://github.com/izyuumi/koe/issues/45)) ([446b458](https://github.com/izyuumi/koe/commit/446b4580f25426ae28e340990cea33c96c5b6208))
+
+
+### Bug Fixes
+
+* Trim transcript whitespace and add trailing space for chaining ([#37](https://github.com/izyuumi/koe/issues/37)) ([7116a86](https://github.com/izyuumi/koe/commit/7116a863526b9f22f03f5a0ab67499470974b7da))
+
 ## [0.1.2](https://github.com/izyuumi/koe/compare/v0.1.1...v0.1.2) (2026-02-15)
 
 
