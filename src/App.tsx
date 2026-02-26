@@ -296,7 +296,7 @@ function App() {
           {language}
         </button>
         <span className="shortcut-hint">
-          <kbd>⌥</kbd> + <kbd>Space</kbd>
+          <kbd>fn</kbd> or <kbd>⌥</kbd>+<kbd>Space</kbd>
         </span>
       </div>
     </div>

@@ -14,6 +14,8 @@ use std::sync::Mutex;
 static IS_LISTENING: AtomicBool = AtomicBool::new(false);
 static LANGUAGE: Mutex<String> = Mutex::new(String::new());
 static ON_DEVICE: AtomicBool = AtomicBool::new(true);
+/// Tracks whether the fn/Globe key is currently held down (to detect press vs release).
+static FN_KEY_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// HUD window dimensions and positioning
 const HUD_WIDTH: f64 = 320.0;
@@ -146,6 +148,37 @@ fn open_system_settings(url: &str) -> Result<(), String> {
     }
 }
 
+/// Register a global NSEvent monitor for the fn/Globe key (macOS 15+).
+///
+/// The fn key generates `flagsChanged` events with `NSEventModifierFlagFunction`.
+/// We toggle dictation on key-down (flag appears) and ignore key-up (flag clears).
+/// The returned monitor object is intentionally leaked so it stays active for the
+/// full lifetime of the app.
+#[cfg(target_os = "macos")]
+fn setup_fn_key_monitor(app: AppHandle) {
+    use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags};
+    use std::ptr::NonNull;
+
+    let block = block2::RcBlock::new(move |event: NonNull<NSEvent>| {
+        // SAFETY: The pointer is valid for the duration of this callback;
+        // NSEvent guarantees the object outlives the handler invocation.
+        let flags = unsafe { event.as_ref().modifierFlags() };
+        let fn_down = flags.contains(NSEventModifierFlags::Function);
+        // Detect key-down only: transition from not-pressed → pressed.
+        let was_down = FN_KEY_ACTIVE.swap(fn_down, Ordering::SeqCst);
+        if fn_down && !was_down {
+            let _ = toggle_dictation(app.clone());
+        }
+    });
+
+    // Register the global monitor. The returned Retained<AnyObject> token must stay
+    // alive for the handler to remain active; we intentionally leak it here so it
+    // persists for the entire app lifetime.
+    let _monitor =
+        NSEvent::addGlobalMonitorForEventsMatchingMask_handler(NSEventMask::FlagsChanged, &block);
+    std::mem::forget(_monitor);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -163,7 +196,7 @@ pub fn run() {
         .setup(|app| {
             // Build tray menu
             let quit = MenuItem::with_id(app, "quit", "Quit Koe", true, None::<&str>)?;
-            let toggle = MenuItem::with_id(app, "toggle", "Toggle Dictation (⌥Space)", true, None::<&str>)?;
+            let toggle = MenuItem::with_id(app, "toggle", "Toggle Dictation (fn/Globe key)", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&toggle, &quit])?;
 
             // Use idle tray icon initially
@@ -184,13 +217,17 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Register global shortcut: Option+Space
+            // Register global shortcut: Option+Space (kept as secondary shortcut)
             let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::Space);
             app.global_shortcut().on_shortcut(shortcut, move |app, _shortcut, event| {
                 if event.state == ShortcutState::Pressed {
                     let _ = toggle_dictation(app.clone());
                 }
             })?;
+
+            // Register fn/Globe key monitor via NSEvent (macOS 15+)
+            #[cfg(target_os = "macos")]
+            setup_fn_key_monitor(app.handle().clone());
 
             Ok(())
         })
