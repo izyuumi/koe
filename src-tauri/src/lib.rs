@@ -214,8 +214,8 @@ pub fn run() {
                         "quit" => app.exit(0),
                         "toggle" => {
                             if let Err(err) = toggle_dictation(app.clone()) {
-                eprintln!("fn/Globe toggle failed: {err}");
-            }
+                                eprintln!("tray toggle failed: {err}");
+                            }
                         }
                         _ => {}
                     }
@@ -227,8 +227,8 @@ pub fn run() {
             app.global_shortcut().on_shortcut(shortcut, move |app, _shortcut, event| {
                 if event.state == ShortcutState::Pressed {
                     if let Err(err) = toggle_dictation(app.clone()) {
-                eprintln!("fn/Globe toggle failed: {err}");
-            }
+                        eprintln!("⌥Space toggle failed: {err}");
+                    }
                 }
             })?;
 
