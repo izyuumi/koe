@@ -174,9 +174,10 @@ fn setup_fn_key_monitor(app: AppHandle) {
     // Register the global monitor. The returned Retained<AnyObject> token must stay
     // alive for the handler to remain active; we intentionally leak it here so it
     // persists for the entire app lifetime.
-    let _monitor =
-        NSEvent::addGlobalMonitorForEventsMatchingMask_handler(NSEventMask::FlagsChanged, &block);
-    std::mem::forget(_monitor);
+    match NSEvent::addGlobalMonitorForEventsMatchingMask_handler(NSEventMask::FlagsChanged, &block) {
+        Some(monitor) => std::mem::forget(monitor),
+        None => eprintln!("fn/Globe monitor not registered (check Accessibility/Input Monitoring permissions)."),
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -196,7 +197,7 @@ pub fn run() {
         .setup(|app| {
             // Build tray menu
             let quit = MenuItem::with_id(app, "quit", "Quit Koe", true, None::<&str>)?;
-            let toggle = MenuItem::with_id(app, "toggle", "Toggle Dictation (fn/Globe key)", true, None::<&str>)?;
+            let toggle = MenuItem::with_id(app, "toggle", "Toggle Dictation (fn/Globe · ⌥Space)", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&toggle, &quit])?;
 
             // Use idle tray icon initially
