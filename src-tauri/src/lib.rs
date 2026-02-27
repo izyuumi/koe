@@ -167,7 +167,9 @@ fn setup_fn_key_monitor(app: AppHandle) {
         // Detect key-down only: transition from not-pressed → pressed.
         let was_down = FN_KEY_ACTIVE.swap(fn_down, Ordering::SeqCst);
         if fn_down && !was_down {
-            let _ = toggle_dictation(app.clone());
+            if let Err(err) = toggle_dictation(app.clone()) {
+                eprintln!("fn/Globe toggle failed: {err}");
+            }
         }
     });
 
@@ -211,7 +213,9 @@ pub fn run() {
                     match event.id.as_ref() {
                         "quit" => app.exit(0),
                         "toggle" => {
-                            let _ = toggle_dictation(app.clone());
+                            if let Err(err) = toggle_dictation(app.clone()) {
+                eprintln!("fn/Globe toggle failed: {err}");
+            }
                         }
                         _ => {}
                     }
@@ -222,7 +226,9 @@ pub fn run() {
             let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::Space);
             app.global_shortcut().on_shortcut(shortcut, move |app, _shortcut, event| {
                 if event.state == ShortcutState::Pressed {
-                    let _ = toggle_dictation(app.clone());
+                    if let Err(err) = toggle_dictation(app.clone()) {
+                eprintln!("fn/Globe toggle failed: {err}");
+            }
                 }
             })?;
 
