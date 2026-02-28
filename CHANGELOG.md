@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/izyuumi/koe/compare/v0.1.2...v0.2.0) (2026-02-28)
+
+
+### Features
+
+* fix panics, dynamic mic indicator, duplicate process guard, escape dismiss ([#36](https://github.com/izyuumi/koe/issues/36)) ([c2bc63d](https://github.com/izyuumi/koe/commit/c2bc63dabc7a6835dc037f4775da6e65f389a87a))
+
 ## [0.1.2](https://github.com/izyuumi/koe/compare/v0.1.1...v0.1.2) (2026-02-15)
 
 
