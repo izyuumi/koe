@@ -196,6 +196,12 @@ fn macos_supports_fn_globe_monitor() -> bool {
         return false;
     }
 
+    // `sysctlbyname` may update `len` to the actual number of bytes written.
+    // Truncate the buffer accordingly so we don't accidentally include trailing
+    // NULs in the UTF-8 slice.
+    buf.truncate(len);
+
+    // `kern.osproductversion` is a C string; strip a single trailing NUL.
     if matches!(buf.last(), Some(0)) {
         buf.pop();
     }
@@ -219,13 +225,14 @@ fn macos_supports_fn_globe_monitor() -> bool {
 ///
 /// # Known limitation – global monitor is observe-only
 ///
-///  cannot suppress events;
-/// when Koe is not the active app, the global handler fires Koe's toggle *and*
+/// Global NSEvent monitors are observe-only and cannot suppress events; when
+/// Koe is not the active app, the global handler fires Koe's toggle *and*
 /// macOS still dispatches the Globe action (Emoji & Symbols / system Dictation).
-/// Fully suppressing the Globe key globally would require a  at the
-///  or  level (entitlement + Accessibility permission). That is
-/// left as a future improvement; users who experience double-firing can disable
-/// the system Globe action in System Settings → Keyboard → Globe Key.
+/// Fully suppressing the Globe key globally would require installing a lower-
+/// level CGEvent tap at the HID or session level (entitlement + Accessibility
+/// permission). That is left as a future improvement; users who experience
+/// double-firing can disable the system Globe action in System Settings →
+/// Keyboard → Globe Key.
 #[cfg(target_os = "macos")]
 fn setup_fn_key_monitor(app: AppHandle) {
     use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags, NSEventType};
