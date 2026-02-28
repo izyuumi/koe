@@ -352,8 +352,9 @@ fn setup_fn_key_monitor(app: AppHandle) {
     });
 
     if !FN_LOCAL_MONITOR_REGISTERED.load(Ordering::SeqCst) {
-        // The local monitor keeps fn/Globe working while Koe is the active app and
-        // also lets us suppress fn-based chords before AppKit dispatches them.
+        // The local monitor keeps fn/Globe working while Koe is the active app.
+        // It only swallows isolated fn/Globe key-up events (to prevent a stray
+        // flagsChanged) and does not suppress fn-based chords.
         match unsafe {
             NSEvent::addLocalMonitorForEventsMatchingMask_handler(event_mask, &local_block)
         } {
