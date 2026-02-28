@@ -107,7 +107,7 @@ function App() {
             clearTimeout(hideTimerRef.current);
             hideTimerRef.current = null;
           }
-          setCopied(false);
+          resetCopied();
           setState((s) => ({
             ...s,
             isListening: true,
@@ -142,6 +142,10 @@ function App() {
     return () => {
       unlisten.then((fns) => fns.forEach((fn) => fn()));
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      if (copiedResetTimerRef.current) {
+        window.clearTimeout(copiedResetTimerRef.current);
+        copiedResetTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -155,6 +159,19 @@ function App() {
 
   const [copied, setCopied] = useState(false);
   const copiedResetTimerRef = useRef<number | null>(null);
+
+  const clearCopiedResetTimer = () => {
+    if (copiedResetTimerRef.current) {
+      window.clearTimeout(copiedResetTimerRef.current);
+      copiedResetTimerRef.current = null;
+    }
+  };
+
+  const resetCopied = () => {
+    setCopied(false);
+    clearCopiedResetTimer();
+  };
+
   const displayText = state.partialResult || state.transcript;
   const isPartial = !!state.partialResult;
   const micLevelWidth = `${Math.max(0, Math.min(state.micLevel, 1)) * 100}%`;
@@ -172,9 +189,7 @@ function App() {
 
     navigator.clipboard.writeText(displayText).then(() => {
       setCopied(true);
-      if (copiedResetTimerRef.current) {
-        window.clearTimeout(copiedResetTimerRef.current);
-      }
+      clearCopiedResetTimer();
       copiedResetTimerRef.current = window.setTimeout(() => {
         setCopied(false);
         copiedResetTimerRef.current = null;
@@ -183,11 +198,7 @@ function App() {
   };
 
   useEffect(() => {
-    setCopied(false);
-    if (copiedResetTimerRef.current) {
-      window.clearTimeout(copiedResetTimerRef.current);
-      copiedResetTimerRef.current = null;
-    }
+    resetCopied();
   }, [displayText]);
 
   const markOnboardingDone = () => {
@@ -312,6 +323,8 @@ function App() {
         className="transcript-wrap"
         role="button"
         tabIndex={0}
+        aria-label="Copy transcript to clipboard"
+        aria-disabled={!displayText}
         onDoubleClick={copyTranscriptToClipboard}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {

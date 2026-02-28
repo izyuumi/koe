@@ -325,11 +325,12 @@ fn setup_fn_key_monitor(app: AppHandle) {
         //
         // Ordering note: we intentionally snapshot the FN_* atomics *before* calling
         // handle_fn_key_event(). For an isolated fn/Globe key-up, the handler clears
-        // FN_KEY_ACTIVE, so the post-call load observes ACTIVE=false while the pre-call
-        // snapshot still has (pending=true, active=true). This callback runs
-        // synchronously on AppKit's event dispatch thread and all state transitions use
-        // SeqCst, so there's no reordering between the snapshot, the handler's store, and
-        // the final load used for swallow decision.
+        // FN_KEY_ACTIVE *inside* handle_fn_key_event() before returning, so the post-call
+        // load observes ACTIVE=false while the pre-call snapshot still has
+        // (pending=true, active=true). This callback runs synchronously on AppKit's event
+        // dispatch thread and all state transitions use SeqCst, so there's no reordering
+        // between the snapshot, the handler's store, and the final load used for the
+        // swallow decision.
         if event_type == NSEventType::FlagsChanged {
             let flags = event_ref.modifierFlags()
                 & NSEventModifierFlags::DeviceIndependentFlagsMask;
