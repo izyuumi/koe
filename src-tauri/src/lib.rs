@@ -14,10 +14,10 @@ use std::sync::Mutex;
 static IS_LISTENING: AtomicBool = AtomicBool::new(false);
 static LANGUAGE: Mutex<String> = Mutex::new(String::new());
 static ON_DEVICE: AtomicBool = AtomicBool::new(true);
-/// Tracks whether the fn/Globe key is currently held down (to detect press vs release).
+/// Tracks whether the fn/Globe key is currently held down.
 static FN_KEY_ACTIVE: AtomicBool = AtomicBool::new(false);
-/// Tracks whether another key was pressed while the fn/Globe key was held.
-static CHORD_USED: AtomicBool = AtomicBool::new(false);
+/// Tracks whether the current fn/Globe press is still an isolated tap candidate.
+static FN_KEY_PENDING_TOGGLE: AtomicBool = AtomicBool::new(false);
 
 /// HUD window dimensions and positioning
 const HUD_WIDTH: f64 = 320.0;
@@ -150,57 +150,86 @@ fn open_system_settings(url: &str) -> Result<(), String> {
     }
 }
 
-/// Register a global NSEvent monitor for the fn/Globe key (macOS 15+).
+/// Register NSEvent monitors for the fn/Globe key (macOS 15+).
 ///
-/// The fn key generates `flagsChanged` events with `NSEventModifierFlagFunction`.
-/// We track press and release separately, and only toggle on release if no other
-/// key was pressed while fn was held. The returned monitor objects are
-/// intentionally leaked so they stay active for the full lifetime of the app.
+/// We keep both a global monitor (when Koe is inactive) and a local monitor
+/// (when Koe is active and the HUD has focus). Dictation only toggles on an
+/// isolated fn tap: fn-down arms the toggle, any other key activity disarms it,
+/// and fn-up performs the toggle if the press remained isolated.
 #[cfg(target_os = "macos")]
 fn setup_fn_key_monitor(app: AppHandle) {
-    use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags};
+    use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags, NSEventType};
     use std::ptr::NonNull;
 
-    let flags_changed_block = block2::RcBlock::new(move |event: NonNull<NSEvent>| {
+    fn handle_fn_key_event(app: &AppHandle, event: &NSEvent) {
+        let event_type = event.r#type();
+        if event_type == NSEventType::FlagsChanged {
+            let flags = event.modifierFlags() & NSEventModifierFlags::DeviceIndependentFlagsMask;
+            let fn_down = flags.contains(NSEventModifierFlags::Function);
+            let fn_only = flags == NSEventModifierFlags::Function;
+            let was_down = FN_KEY_ACTIVE.swap(fn_down, Ordering::SeqCst);
+
+            if fn_down && !was_down {
+                FN_KEY_PENDING_TOGGLE.store(fn_only, Ordering::SeqCst);
+                return;
+            }
+
+            if fn_down && !fn_only {
+                FN_KEY_PENDING_TOGGLE.store(false, Ordering::SeqCst);
+                return;
+            }
+
+            if !fn_down && was_down {
+                if FN_KEY_PENDING_TOGGLE.swap(false, Ordering::SeqCst) {
+                    if let Err(err) = toggle_dictation(app.clone()) {
+                        eprintln!("fn/Globe toggle failed: {err}");
+                    }
+                }
+            }
+
+            return;
+        }
+
+        if FN_KEY_ACTIVE.load(Ordering::SeqCst)
+            && (event_type == NSEventType::KeyDown || event_type == NSEventType::KeyUp)
+        {
+            FN_KEY_PENDING_TOGGLE.store(false, Ordering::SeqCst);
+        }
+    }
+
+    let event_mask = NSEventMask::FlagsChanged | NSEventMask::KeyDown | NSEventMask::KeyUp;
+
+    let global_app = app.clone();
+    let global_block = block2::RcBlock::new(move |event: NonNull<NSEvent>| {
         // SAFETY: The pointer is valid for the duration of this callback;
         // NSEvent guarantees the object outlives the handler invocation.
-        let flags = unsafe { event.as_ref().modifierFlags() };
-        let fn_down = flags.contains(NSEventModifierFlags::Function);
-        let was_down = FN_KEY_ACTIVE.swap(fn_down, Ordering::SeqCst);
-        if fn_down && !was_down {
-            CHORD_USED.store(false, Ordering::SeqCst);
-        } else if was_down && !fn_down && !CHORD_USED.load(Ordering::SeqCst) {
-            if let Err(err) = toggle_dictation(app.clone()) {
-                eprintln!("fn/Globe toggle failed: {err}");
-            }
-        }
-    });
-
-    let key_down_block = block2::RcBlock::new(|event: NonNull<NSEvent>| {
-        if FN_KEY_ACTIVE.load(Ordering::SeqCst) {
-            CHORD_USED.store(true, Ordering::SeqCst);
-        }
-        event.as_ptr()
+        let event = unsafe { event.as_ref() };
+        handle_fn_key_event(&global_app, event);
     });
 
     // Register the global monitor. The returned Retained<AnyObject> token must stay
     // alive for the handler to remain active; we intentionally leak it here so it
     // persists for the entire app lifetime.
-    match NSEvent::addGlobalMonitorForEventsMatchingMask_handler(
-        NSEventMask::FlagsChanged,
-        &flags_changed_block,
-    ) {
+    match NSEvent::addGlobalMonitorForEventsMatchingMask_handler(event_mask, &global_block) {
         Some(monitor) => std::mem::forget(monitor),
         None => eprintln!("fn/Globe monitor not registered (check Accessibility/Input Monitoring permissions)."),
     }
 
-    // The local key-down monitor lets us detect fn-modifier chords and suppress
-    // the dictation toggle when fn was used with another key.
+    let local_block = block2::RcBlock::new(move |event: NonNull<NSEvent>| {
+        // SAFETY: The pointer is valid for the duration of this callback;
+        // NSEvent guarantees the object outlives the handler invocation.
+        let event_ref = unsafe { event.as_ref() };
+        handle_fn_key_event(&app, event_ref);
+        event.as_ptr()
+    });
+
+    // The local monitor keeps fn/Globe working while Koe is the active app and
+    // also lets us suppress fn-based chords before AppKit dispatches them.
     match unsafe {
-        NSEvent::addLocalMonitorForEventsMatchingMask_handler(NSEventMask::KeyDown, &key_down_block)
+        NSEvent::addLocalMonitorForEventsMatchingMask_handler(event_mask, &local_block)
     } {
         Some(monitor) => std::mem::forget(monitor),
-        None => eprintln!("fn/Globe chord monitor not registered."),
+        None => eprintln!("fn/Globe local monitor not registered."),
     }
 }
 
