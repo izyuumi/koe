@@ -353,8 +353,10 @@ fn setup_fn_key_monitor(app: AppHandle) {
 
     if !FN_LOCAL_MONITOR_REGISTERED.load(Ordering::SeqCst) {
         // The local monitor keeps fn/Globe working while Koe is the active app.
-        // It only swallows isolated fn/Globe key-up events (to prevent a stray
-        // flagsChanged) and does not suppress fn-based chords.
+        // It only swallows *isolated* fn/Globe key-up events (not fn-based chords).
+        // See the swallow condition above: for FlagsChanged we return NULL only when
+        // `fn_in_event == false` and the snapshot shows (pending && active) while the
+        // post-handler load shows `FN_KEY_ACTIVE == false`.
         match unsafe {
             NSEvent::addLocalMonitorForEventsMatchingMask_handler(event_mask, &local_block)
         } {
