@@ -150,6 +150,53 @@ fn open_system_settings(url: &str) -> Result<(), String> {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn macos_supports_fn_globe_monitor() -> bool {
+    const REQUIRED_MAJOR_VERSION: u32 = 15;
+    const OS_PRODUCT_VERSION_KEY: &[u8] = b"kern.osproductversion\0";
+
+    let mut len = 0usize;
+    let status = unsafe {
+        libc::sysctlbyname(
+            OS_PRODUCT_VERSION_KEY.as_ptr().cast(),
+            std::ptr::null_mut(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if status != 0 || len == 0 {
+        return false;
+    }
+
+    let mut buf = vec![0u8; len];
+    let status = unsafe {
+        libc::sysctlbyname(
+            OS_PRODUCT_VERSION_KEY.as_ptr().cast(),
+            buf.as_mut_ptr().cast(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if status != 0 {
+        return false;
+    }
+
+    if matches!(buf.last(), Some(0)) {
+        buf.pop();
+    }
+
+    let Ok(version) = std::str::from_utf8(&buf) else {
+        return false;
+    };
+
+    match version.split('.').next().and_then(|major| major.parse::<u32>().ok()) {
+        Some(major) => major >= REQUIRED_MAJOR_VERSION,
+        None => false,
+    }
+}
+
 /// Register NSEvent monitors for the fn/Globe key (macOS 15+).
 ///
 /// We keep both a global monitor (when Koe is inactive) and a local monitor
@@ -175,8 +222,9 @@ fn setup_fn_key_monitor(app: AppHandle) {
         let event_type = event.r#type();
         if event_type == NSEventType::FlagsChanged {
             let flags = event.modifierFlags() & NSEventModifierFlags::DeviceIndependentFlagsMask;
+            let flags_ignoring_locks = flags & !NSEventModifierFlags::AlphaShift;
             let fn_down = flags.contains(NSEventModifierFlags::Function);
-            let fn_only = flags == NSEventModifierFlags::Function;
+            let fn_only = flags_ignoring_locks == NSEventModifierFlags::Function;
             let was_down = FN_KEY_ACTIVE.swap(fn_down, Ordering::SeqCst);
 
             if fn_down && !was_down {
@@ -320,7 +368,11 @@ pub fn run() {
 
             // Register fn/Globe key monitor via NSEvent (macOS 15+)
             #[cfg(target_os = "macos")]
-            setup_fn_key_monitor(app.handle().clone());
+            if macos_supports_fn_globe_monitor() {
+                setup_fn_key_monitor(app.handle().clone());
+            } else {
+                eprintln!("fn/Globe shortcut requires macOS 15+; skipping monitor registration.");
+            }
 
             Ok(())
         })
