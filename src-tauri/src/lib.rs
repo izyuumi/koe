@@ -18,6 +18,8 @@ static ON_DEVICE: AtomicBool = AtomicBool::new(true);
 static FN_KEY_ACTIVE: AtomicBool = AtomicBool::new(false);
 /// Tracks whether the current fn/Globe press is still an isolated tap candidate.
 static FN_KEY_PENDING_TOGGLE: AtomicBool = AtomicBool::new(false);
+/// Tracks whether both NSEvent monitors were registered successfully.
+static FN_MONITOR_REGISTERED: AtomicBool = AtomicBool::new(false);
 
 /// HUD window dimensions and positioning
 const HUD_WIDTH: f64 = 320.0;
@@ -132,7 +134,7 @@ fn open_accessibility_settings() -> Result<(), String> {
 fn supports_fn_globe_shortcut() -> bool {
     #[cfg(target_os = "macos")]
     {
-        macos_supports_fn_globe_monitor()
+        macos_supports_fn_globe_monitor() && FN_MONITOR_REGISTERED.load(Ordering::SeqCst)
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -288,10 +290,19 @@ fn setup_fn_key_monitor(app: AppHandle) {
     // Register the global monitor. The returned Retained<AnyObject> token must stay
     // alive for the handler to remain active; we intentionally leak it here so it
     // persists for the entire app lifetime.
-    match NSEvent::addGlobalMonitorForEventsMatchingMask_handler(event_mask, &global_block) {
-        Some(monitor) => std::mem::forget(monitor),
-        None => eprintln!("fn/Globe monitor not registered (check Accessibility/Input Monitoring permissions)."),
-    }
+    let global_registered =
+        match NSEvent::addGlobalMonitorForEventsMatchingMask_handler(event_mask, &global_block) {
+            Some(monitor) => {
+                std::mem::forget(monitor);
+                true
+            }
+            None => {
+                eprintln!(
+                    "fn/Globe monitor not registered (check Accessibility/Input Monitoring permissions)."
+                );
+                false
+            }
+        };
 
     let local_block = block2::RcBlock::new(move |event: NonNull<NSEvent>| {
         // SAFETY: The pointer is valid for the duration of this callback;
@@ -328,12 +339,20 @@ fn setup_fn_key_monitor(app: AppHandle) {
 
     // The local monitor keeps fn/Globe working while Koe is the active app and
     // also lets us suppress fn-based chords before AppKit dispatches them.
-    match unsafe {
+    let local_registered = match unsafe {
         NSEvent::addLocalMonitorForEventsMatchingMask_handler(event_mask, &local_block)
     } {
-        Some(monitor) => std::mem::forget(monitor),
-        None => eprintln!("fn/Globe local monitor not registered."),
-    }
+        Some(monitor) => {
+            std::mem::forget(monitor);
+            true
+        }
+        None => {
+            eprintln!("fn/Globe local monitor not registered.");
+            false
+        }
+    };
+
+    FN_MONITOR_REGISTERED.store(global_registered && local_registered, Ordering::SeqCst);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -352,6 +371,14 @@ pub fn run() {
             supports_fn_globe_shortcut,
         ])
         .setup(|app| {
+            // Register fn/Globe key monitor via NSEvent (macOS 15+)
+            #[cfg(target_os = "macos")]
+            if macos_supports_fn_globe_monitor() {
+                setup_fn_key_monitor(app.handle().clone());
+            } else {
+                eprintln!("fn/Globe shortcut requires macOS 15+; skipping monitor registration.");
+            }
+
             // Build tray menu
             let quit = MenuItem::with_id(app, "quit", "Quit Koe", true, None::<&str>)?;
             let supports_fn_globe = supports_fn_globe_shortcut();
@@ -392,14 +419,6 @@ pub fn run() {
                     }
                 }
             })?;
-
-            // Register fn/Globe key monitor via NSEvent (macOS 15+)
-            #[cfg(target_os = "macos")]
-            if macos_supports_fn_globe_monitor() {
-                setup_fn_key_monitor(app.handle().clone());
-            } else {
-                eprintln!("fn/Globe shortcut requires macOS 15+; skipping monitor registration.");
-            }
 
             Ok(())
         })

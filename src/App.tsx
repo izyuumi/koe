@@ -107,6 +107,7 @@ function App() {
             clearTimeout(hideTimerRef.current);
             hideTimerRef.current = null;
           }
+          setCopied(false);
           setState((s) => ({
             ...s,
             isListening: true,
@@ -164,6 +165,10 @@ function App() {
         ? "Done"
         : "Idle";
   const transcriptHint = "Start speaking. Your words appear here.";
+
+  useEffect(() => {
+    setCopied(false);
+  }, [displayText]);
 
   const markOnboardingDone = () => {
     localStorage.setItem("koe.onboarding.permissions.v1", "done");
