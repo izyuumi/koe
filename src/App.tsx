@@ -29,6 +29,8 @@ function App() {
     return localStorage.getItem("koe.onDevice") !== "false";
   });
 
+  const [supportsFnGlobeShortcut, setSupportsFnGlobeShortcut] = useState<boolean>(false);
+
   const [state, setState] = useState<DictationState>({
     isListening: false,
     transcript: "",
@@ -43,6 +45,12 @@ function App() {
       getCurrentWebviewWindow().hide().catch(() => {});
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    invoke<boolean>("supports_fn_globe_shortcut")
+      .then((supported) => setSupportsFnGlobeShortcut(Boolean(supported)))
+      .catch(() => setSupportsFnGlobeShortcut(false));
+  }, []);
 
   // Dismiss HUD with Escape key (#18)
   useEffect(() => {
@@ -99,6 +107,7 @@ function App() {
             clearTimeout(hideTimerRef.current);
             hideTimerRef.current = null;
           }
+          setCopied(false);
           setState((s) => ({
             ...s,
             isListening: true,
@@ -144,6 +153,7 @@ function App() {
     setIsOnDevice((v) => !v);
   };
 
+  const [copied, setCopied] = useState(false);
   const displayText = state.partialResult || state.transcript;
   const isPartial = !!state.partialResult;
   const micLevelWidth = `${Math.max(0, Math.min(state.micLevel, 1)) * 100}%`;
@@ -155,6 +165,10 @@ function App() {
         ? "Done"
         : "Idle";
   const transcriptHint = "Start speaking. Your words appear here.";
+
+  useEffect(() => {
+    setCopied(false);
+  }, [displayText]);
 
   const markOnboardingDone = () => {
     localStorage.setItem("koe.onboarding.permissions.v1", "done");
@@ -230,6 +244,7 @@ function App() {
   // Normal HUD (visible during dictation)
   return (
     <div className="hud" role="application" aria-label="Koe dictation HUD">
+      <div className="drag-handle" data-tauri-drag-region />
       {state.error ? (
         <div className="error-banner" role="alert">
           <span className="error-icon">⚠</span>
@@ -273,9 +288,20 @@ function App() {
         </button>
       </div>
 
-      <div className="transcript-wrap">
+      <div
+        className="transcript-wrap"
+        onDoubleClick={() => {
+          if (displayText) {
+            navigator.clipboard.writeText(displayText).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            });
+          }
+        }}
+        title="Double-click to copy"
+      >
         <div className={`transcript ${displayText ? (isPartial ? "partial" : "final") : "placeholder"}`}>
-          {displayText || transcriptHint}
+          {copied ? "✓ Copied!" : displayText || transcriptHint}
         </div>
       </div>
 
@@ -284,7 +310,15 @@ function App() {
           {language}
         </button>
         <span className="shortcut-hint">
-          <kbd>⌥</kbd> + <kbd>Space</kbd>
+          {supportsFnGlobeShortcut ? (
+            <>
+              <kbd>fn</kbd> or <kbd>⌥</kbd>+<kbd>Space</kbd>
+            </>
+          ) : (
+            <>
+              <kbd>⌥</kbd>+<kbd>Space</kbd>
+            </>
+          )}
         </span>
       </div>
     </div>
