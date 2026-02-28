@@ -96,10 +96,11 @@ fn stop_dictation(app: AppHandle) -> Result<String, String> {
 
     let text = text.trim().to_string();
     if !text.is_empty() {
-        // Append a trailing space so consecutive dictations chain naturally
+        // Append a trailing space so consecutive dictations chain naturally *in the
+        // target app*, but keep the clipboard as the raw transcript (no padded space).
         let text_with_space = format!("{text} ");
-        insertion::insert_text(&text_with_space);
-        return Ok(text_with_space);
+        insertion::insert_text_with_clipboard(&text_with_space, &text);
+        return Ok(text);
     }
 
     Ok(text)

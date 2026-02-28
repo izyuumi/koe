@@ -9,19 +9,26 @@ const APPLESCRIPT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Insert text at the current cursor position in the frontmost app.
 /// Uses the clipboard + Cmd+V approach for maximum compatibility.
-/// The transcript remains on the clipboard so the user can paste it again.
-pub fn insert_text(text: &str) {
-    // Set clipboard to our text; abort if write fails
-    if !set_clipboard(text) {
+///
+/// `text_to_insert` is what will be pasted into the target app. `text_for_clipboard`
+/// is what should remain on the clipboard after insertion (e.g., the raw transcript
+/// without any chaining/padding characters).
+pub fn insert_text_with_clipboard(text_to_insert: &str, text_for_clipboard: &str) {
+    // Set clipboard to the string we want to paste; abort if write fails.
+    if !set_clipboard(text_to_insert) {
         return;
     }
 
     // Simulate Cmd+V
     paste_via_applescript();
 
-    // Leave the transcript on the clipboard so the user can paste it again.
-    // Previously we restored the old clipboard content, but auto-copy is more
-    // useful: the last dictation result stays available for ⌘V.
+    // Restore the desired clipboard content (best-effort).
+    let _ = set_clipboard(text_for_clipboard);
+}
+
+/// Convenience wrapper: insert and leave the same text on the clipboard.
+pub fn insert_text(text: &str) {
+    insert_text_with_clipboard(text, text);
 }
 
 /// Write text to the system clipboard via pbcopy. Returns true on success.
