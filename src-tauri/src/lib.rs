@@ -219,7 +219,20 @@ fn setup_fn_key_monitor(app: AppHandle) {
         // SAFETY: The pointer is valid for the duration of this callback;
         // NSEvent guarantees the object outlives the handler invocation.
         let event_ref = unsafe { event.as_ref() };
+        let event_type = event_ref.r#type();
         handle_fn_key_event(&app, event_ref);
+        // Swallow FlagsChanged events that involve the fn/Globe key so that macOS
+        // does not also dispatch its own Globe action (Emoji & Symbols picker or
+        // system Dictation) alongside the Koe toggle.
+        if event_type == NSEventType::FlagsChanged {
+            let flags = event_ref.modifierFlags()
+                & NSEventModifierFlags::DeviceIndependentFlagsMask;
+            if flags.contains(NSEventModifierFlags::Function)
+                || FN_KEY_ACTIVE.load(Ordering::SeqCst)
+            {
+                return std::ptr::null_mut();
+            }
+        }
         event.as_ptr()
     });
 
