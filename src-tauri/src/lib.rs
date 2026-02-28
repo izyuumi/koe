@@ -128,6 +128,19 @@ fn open_accessibility_settings() -> Result<(), String> {
     open_system_settings("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
 }
 
+#[tauri::command]
+fn supports_fn_globe_shortcut() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos_supports_fn_globe_monitor()
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
 fn open_system_settings(url: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -329,11 +342,18 @@ pub fn run() {
             open_microphone_settings,
             open_speech_settings,
             open_accessibility_settings,
+            supports_fn_globe_shortcut,
         ])
         .setup(|app| {
             // Build tray menu
             let quit = MenuItem::with_id(app, "quit", "Quit Koe", true, None::<&str>)?;
-            let toggle = MenuItem::with_id(app, "toggle", "Toggle Dictation (fn/Globe · ⌥Space)", true, None::<&str>)?;
+            let supports_fn_globe = supports_fn_globe_shortcut();
+            let toggle_label = if supports_fn_globe {
+                "Toggle Dictation (fn/Globe · ⌥Space)"
+            } else {
+                "Toggle Dictation (⌥Space)"
+            };
+            let toggle = MenuItem::with_id(app, "toggle", toggle_label, true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&toggle, &quit])?;
 
             // Use idle tray icon initially

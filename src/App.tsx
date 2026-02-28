@@ -29,6 +29,8 @@ function App() {
     return localStorage.getItem("koe.onDevice") !== "false";
   });
 
+  const [supportsFnGlobeShortcut, setSupportsFnGlobeShortcut] = useState<boolean>(false);
+
   const [state, setState] = useState<DictationState>({
     isListening: false,
     transcript: "",
@@ -43,6 +45,12 @@ function App() {
       getCurrentWebviewWindow().hide().catch(() => {});
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    invoke<boolean>("supports_fn_globe_shortcut")
+      .then((supported) => setSupportsFnGlobeShortcut(Boolean(supported)))
+      .catch(() => setSupportsFnGlobeShortcut(false));
+  }, []);
 
   // Dismiss HUD with Escape key (#18)
   useEffect(() => {
@@ -296,7 +304,15 @@ function App() {
           {language}
         </button>
         <span className="shortcut-hint">
-          <kbd>fn</kbd> or <kbd>⌥</kbd>+<kbd>Space</kbd>
+          {supportsFnGlobeShortcut ? (
+            <>
+              <kbd>fn</kbd> or <kbd>⌥</kbd>+<kbd>Space</kbd>
+            </>
+          ) : (
+            <>
+              <kbd>⌥</kbd>+<kbd>Space</kbd>
+            </>
+          )}
         </span>
       </div>
     </div>
