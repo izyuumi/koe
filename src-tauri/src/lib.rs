@@ -16,6 +16,8 @@ static LANGUAGE: Mutex<String> = Mutex::new(String::new());
 static ON_DEVICE: AtomicBool = AtomicBool::new(true);
 /// Tracks whether the fn/Globe key is currently held down (to detect press vs release).
 static FN_KEY_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// Tracks whether another key was pressed while the fn/Globe key was held.
+static CHORD_USED: AtomicBool = AtomicBool::new(false);
 
 /// HUD window dimensions and positioning
 const HUD_WIDTH: f64 = 320.0;
@@ -151,34 +153,54 @@ fn open_system_settings(url: &str) -> Result<(), String> {
 /// Register a global NSEvent monitor for the fn/Globe key (macOS 15+).
 ///
 /// The fn key generates `flagsChanged` events with `NSEventModifierFlagFunction`.
-/// We toggle dictation on key-down (flag appears) and ignore key-up (flag clears).
-/// The returned monitor object is intentionally leaked so it stays active for the
-/// full lifetime of the app.
+/// We track press and release separately, and only toggle on release if no other
+/// key was pressed while fn was held. The returned monitor objects are
+/// intentionally leaked so they stay active for the full lifetime of the app.
 #[cfg(target_os = "macos")]
 fn setup_fn_key_monitor(app: AppHandle) {
     use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags};
     use std::ptr::NonNull;
 
-    let block = block2::RcBlock::new(move |event: NonNull<NSEvent>| {
+    let flags_changed_block = block2::RcBlock::new(move |event: NonNull<NSEvent>| {
         // SAFETY: The pointer is valid for the duration of this callback;
         // NSEvent guarantees the object outlives the handler invocation.
         let flags = unsafe { event.as_ref().modifierFlags() };
         let fn_down = flags.contains(NSEventModifierFlags::Function);
-        // Detect key-down only: transition from not-pressed → pressed.
         let was_down = FN_KEY_ACTIVE.swap(fn_down, Ordering::SeqCst);
         if fn_down && !was_down {
+            CHORD_USED.store(false, Ordering::SeqCst);
+        } else if was_down && !fn_down && !CHORD_USED.load(Ordering::SeqCst) {
             if let Err(err) = toggle_dictation(app.clone()) {
                 eprintln!("fn/Globe toggle failed: {err}");
             }
         }
     });
 
+    let key_down_block = block2::RcBlock::new(|event: NonNull<NSEvent>| {
+        if FN_KEY_ACTIVE.load(Ordering::SeqCst) {
+            CHORD_USED.store(true, Ordering::SeqCst);
+        }
+        event.as_ptr()
+    });
+
     // Register the global monitor. The returned Retained<AnyObject> token must stay
     // alive for the handler to remain active; we intentionally leak it here so it
     // persists for the entire app lifetime.
-    match NSEvent::addGlobalMonitorForEventsMatchingMask_handler(NSEventMask::FlagsChanged, &block) {
+    match NSEvent::addGlobalMonitorForEventsMatchingMask_handler(
+        NSEventMask::FlagsChanged,
+        &flags_changed_block,
+    ) {
         Some(monitor) => std::mem::forget(monitor),
         None => eprintln!("fn/Globe monitor not registered (check Accessibility/Input Monitoring permissions)."),
+    }
+
+    // The local key-down monitor lets us detect fn-modifier chords and suppress
+    // the dictation toggle when fn was used with another key.
+    match unsafe {
+        NSEvent::addLocalMonitorForEventsMatchingMask_handler(NSEventMask::KeyDown, &key_down_block)
+    } {
+        Some(monitor) => std::mem::forget(monitor),
+        None => eprintln!("fn/Globe chord monitor not registered."),
     }
 }
 
