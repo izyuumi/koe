@@ -90,6 +90,7 @@ fn paste_via_applescript() {
             Err(e) => {
                 eprintln!("Error waiting for osascript: {}", e);
                 let _ = child.kill();
+                let _ = child.wait();
                 return;
             }
         }
