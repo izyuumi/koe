@@ -230,18 +230,25 @@ fn setup_fn_key_monitor(app: AppHandle) {
         // NSEvent guarantees the object outlives the handler invocation.
         let event_ref = unsafe { event.as_ref() };
         let event_type = event_ref.r#type();
-        // Snapshot fn-active state before the handler may clear it (fn key-up path).
+        // Snapshot state before the handler may mutate the atomics.
         let fn_was_active = FN_KEY_ACTIVE.load(Ordering::SeqCst);
+        let fn_was_pending = FN_KEY_PENDING_TOGGLE.load(Ordering::SeqCst);
         handle_fn_key_event(&app, event_ref);
-        // Swallow FlagsChanged events that involve the fn/Globe key so that macOS
-        // does not also dispatch its own Globe action (Emoji & Symbols picker or
-        // system Dictation) alongside the Koe toggle.
-        // We check both the current modifier flags (fn key-down) and the
-        // pre-handler snapshot (fn key-up, where Function flag is already cleared).
+        // Swallow FlagsChanged events for *isolated* fn/Globe taps only, so that
+        // fn-based chords (e.g. Globe + another key) are not intercepted and still
+        // reach the focused webview.
+        //
+        // Isolated tap fn-down:  the handler sets PENDING=true  → swallow
+        // Isolated tap fn-up:    fn_was_pending=true, fn_was_active=true → swallow
+        // fn+chord down/up:      PENDING is false (cleared by handler or never set)
+        //                        → do not swallow
         if event_type == NSEventType::FlagsChanged {
             let flags = event_ref.modifierFlags()
                 & NSEventModifierFlags::DeviceIndependentFlagsMask;
-            if flags.contains(NSEventModifierFlags::Function) || fn_was_active {
+            let fn_in_event = flags.contains(NSEventModifierFlags::Function);
+            let swallow = (fn_in_event && FN_KEY_PENDING_TOGGLE.load(Ordering::SeqCst))
+                || (!fn_in_event && fn_was_pending && fn_was_active);
+            if swallow {
                 return std::ptr::null_mut();
             }
         }
