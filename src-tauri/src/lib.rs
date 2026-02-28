@@ -238,16 +238,19 @@ fn setup_fn_key_monitor(app: AppHandle) {
         // fn-based chords (e.g. Globe + another key) are not intercepted and still
         // reach the focused webview.
         //
-        // Isolated tap fn-down:  the handler sets PENDING=true  → swallow
-        // Isolated tap fn-up:    fn_was_pending=true, fn_was_active=true → swallow
+        // Isolated tap fn-down:  the handler sets PENDING=true  → do not swallow
+        // Isolated tap fn-up:    fn_was_pending=true, fn_was_active=true and the
+        //                        handler clears ACTIVE         → swallow
         // fn+chord down/up:      PENDING is false (cleared by handler or never set)
         //                        → do not swallow
         if event_type == NSEventType::FlagsChanged {
             let flags = event_ref.modifierFlags()
                 & NSEventModifierFlags::DeviceIndependentFlagsMask;
             let fn_in_event = flags.contains(NSEventModifierFlags::Function);
-            let swallow = (fn_in_event && FN_KEY_PENDING_TOGGLE.load(Ordering::SeqCst))
-                || (!fn_in_event && fn_was_pending && fn_was_active);
+            let swallow = !fn_in_event
+                && fn_was_pending
+                && fn_was_active
+                && !FN_KEY_ACTIVE.load(Ordering::SeqCst);
             if swallow {
                 return std::ptr::null_mut();
             }
