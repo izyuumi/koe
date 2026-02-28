@@ -6,6 +6,8 @@ use std::time::Duration;
 
 /// Timeout for osascript calls to prevent indefinite blocking.
 const APPLESCRIPT_TIMEOUT: Duration = Duration::from_secs(5);
+/// Give the target app time to consume Cmd+V before we overwrite the pasteboard.
+const CLIPBOARD_RESTORE_DELAY: Duration = Duration::from_millis(150);
 
 /// Insert text at the current cursor position in the frontmost app.
 /// Uses the clipboard + Cmd+V approach for maximum compatibility.
@@ -21,6 +23,8 @@ pub fn insert_text_with_clipboard(text_to_insert: &str, text_for_clipboard: &str
 
     // Simulate Cmd+V
     paste_via_applescript();
+
+    std::thread::sleep(CLIPBOARD_RESTORE_DELAY);
 
     // Restore the desired clipboard content (best-effort).
     let _ = set_clipboard(text_for_clipboard);
