@@ -156,6 +156,16 @@ fn open_system_settings(url: &str) -> Result<(), String> {
 /// (when Koe is active and the HUD has focus). Dictation only toggles on an
 /// isolated fn tap: fn-down arms the toggle, any other key activity disarms it,
 /// and fn-up performs the toggle if the press remained isolated.
+///
+/// # Known limitation – global monitor is observe-only
+///
+///  cannot suppress events;
+/// when Koe is not the active app, the global handler fires Koe's toggle *and*
+/// macOS still dispatches the Globe action (Emoji & Symbols / system Dictation).
+/// Fully suppressing the Globe key globally would require a  at the
+///  or  level (entitlement + Accessibility permission). That is
+/// left as a future improvement; users who experience double-firing can disable
+/// the system Globe action in System Settings → Keyboard → Globe Key.
 #[cfg(target_os = "macos")]
 fn setup_fn_key_monitor(app: AppHandle) {
     use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags, NSEventType};
@@ -220,16 +230,18 @@ fn setup_fn_key_monitor(app: AppHandle) {
         // NSEvent guarantees the object outlives the handler invocation.
         let event_ref = unsafe { event.as_ref() };
         let event_type = event_ref.r#type();
+        // Snapshot fn-active state before the handler may clear it (fn key-up path).
+        let fn_was_active = FN_KEY_ACTIVE.load(Ordering::SeqCst);
         handle_fn_key_event(&app, event_ref);
         // Swallow FlagsChanged events that involve the fn/Globe key so that macOS
         // does not also dispatch its own Globe action (Emoji & Symbols picker or
         // system Dictation) alongside the Koe toggle.
+        // We check both the current modifier flags (fn key-down) and the
+        // pre-handler snapshot (fn key-up, where Function flag is already cleared).
         if event_type == NSEventType::FlagsChanged {
             let flags = event_ref.modifierFlags()
                 & NSEventModifierFlags::DeviceIndependentFlagsMask;
-            if flags.contains(NSEventModifierFlags::Function)
-                || FN_KEY_ACTIVE.load(Ordering::SeqCst)
-            {
+            if flags.contains(NSEventModifierFlags::Function) || fn_was_active {
                 return std::ptr::null_mut();
             }
         }
