@@ -154,6 +154,7 @@ function App() {
   };
 
   const [copied, setCopied] = useState(false);
+  const copiedResetTimerRef = useRef<number | null>(null);
   const displayText = state.partialResult || state.transcript;
   const isPartial = !!state.partialResult;
   const micLevelWidth = `${Math.max(0, Math.min(state.micLevel, 1)) * 100}%`;
@@ -166,8 +167,27 @@ function App() {
         : "Idle";
   const transcriptHint = "Start speaking. Your words appear here.";
 
+  const copyTranscriptToClipboard = () => {
+    if (!displayText) return;
+
+    navigator.clipboard.writeText(displayText).then(() => {
+      setCopied(true);
+      if (copiedResetTimerRef.current) {
+        window.clearTimeout(copiedResetTimerRef.current);
+      }
+      copiedResetTimerRef.current = window.setTimeout(() => {
+        setCopied(false);
+        copiedResetTimerRef.current = null;
+      }, 1500);
+    });
+  };
+
   useEffect(() => {
     setCopied(false);
+    if (copiedResetTimerRef.current) {
+      window.clearTimeout(copiedResetTimerRef.current);
+      copiedResetTimerRef.current = null;
+    }
   }, [displayText]);
 
   const markOnboardingDone = () => {
@@ -290,12 +310,13 @@ function App() {
 
       <div
         className="transcript-wrap"
-        onDoubleClick={() => {
-          if (displayText) {
-            navigator.clipboard.writeText(displayText).then(() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            });
+        role="button"
+        tabIndex={0}
+        onDoubleClick={copyTranscriptToClipboard}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            copyTranscriptToClipboard();
           }
         }}
         title="Double-click to copy"

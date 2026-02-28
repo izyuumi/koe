@@ -7,6 +7,7 @@
 
 * fix panics, dynamic mic indicator, duplicate process guard, escape dismiss ([#36](https://github.com/izyuumi/koe/issues/36)) ([d47bb55](https://github.com/izyuumi/koe/commit/d47bb55167a34932ac27f6b758252191d631628f))
 * **koe:** auto-copy transcript to clipboard on dictation end ([#45](https://github.com/izyuumi/koe/issues/45)) ([446b458](https://github.com/izyuumi/koe/commit/446b4580f25426ae28e340990cea33c96c5b6208))
+* **koe:** add fn/Globe key shortcut to toggle dictation (macOS 15+) ([#47](https://github.com/izyuumi/koe/issues/47))
 
 
 ### Bug Fixes
