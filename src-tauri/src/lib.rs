@@ -374,28 +374,47 @@ fn setup_fn_key_monitor(app: AppHandle) {
 #[cfg(target_os = "macos")]
 fn start_fn_key_monitor_retry_loop(app: AppHandle) {
     const FN_MONITOR_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+    const MAX_RETRIES: u32 = 10;
+    const MAX_BACKOFF: std::time::Duration = std::time::Duration::from_secs(30);
 
-    std::thread::spawn(move || loop {
-        if FN_GLOBAL_MONITOR_REGISTERED.load(Ordering::SeqCst)
-            && FN_LOCAL_MONITOR_REGISTERED.load(Ordering::SeqCst)
-        {
-            break;
-        }
+    std::thread::spawn(move || {
+        let mut retry_count = 0u32;
+        let mut sleep_duration = FN_MONITOR_RETRY_INTERVAL;
 
-        std::thread::sleep(FN_MONITOR_RETRY_INTERVAL);
-
-        if let Err(err) = app.run_on_main_thread({
-            let app = app.clone();
-            move || {
-                if !(FN_GLOBAL_MONITOR_REGISTERED.load(Ordering::SeqCst)
-                    && FN_LOCAL_MONITOR_REGISTERED.load(Ordering::SeqCst))
-                {
-                    setup_fn_key_monitor(app.clone());
-                }
+        loop {
+            if FN_GLOBAL_MONITOR_REGISTERED.load(Ordering::SeqCst)
+                && FN_LOCAL_MONITOR_REGISTERED.load(Ordering::SeqCst)
+            {
+                break;
             }
-        }) {
-            eprintln!("fn/Globe monitor retry failed: {err}");
-            break;
+
+            if retry_count >= MAX_RETRIES {
+                eprintln!(
+                    "fn/Globe monitor: giving up after {} retries",
+                    MAX_RETRIES
+                );
+                break;
+            }
+
+            std::thread::sleep(sleep_duration);
+
+            // Exponential backoff: double the interval, capped at MAX_BACKOFF
+            sleep_duration = (sleep_duration * 2).min(MAX_BACKOFF);
+            retry_count += 1;
+
+            if let Err(err) = app.run_on_main_thread({
+                let app = app.clone();
+                move || {
+                    if !(FN_GLOBAL_MONITOR_REGISTERED.load(Ordering::SeqCst)
+                        && FN_LOCAL_MONITOR_REGISTERED.load(Ordering::SeqCst))
+                    {
+                        setup_fn_key_monitor(app.clone());
+                    }
+                }
+            }) {
+                eprintln!("fn/Globe monitor retry failed: {err}");
+                break;
+            }
         }
     });
 }
