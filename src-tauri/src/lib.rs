@@ -371,6 +371,27 @@ fn setup_fn_key_monitor(app: AppHandle) {
     }
 }
 
+/// Refresh the tray "toggle" menu item label to reflect the current fn/Globe
+/// monitor registration state. Must be called from the main thread.
+#[cfg(target_os = "macos")]
+fn update_tray_shortcut_label(app: &AppHandle) {
+    let supports = supports_fn_globe_shortcut();
+    let label = if supports {
+        "Toggle Dictation (fn/Globe · ⌥Space)"
+    } else {
+        "Toggle Dictation (⌥Space)"
+    };
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        if let Some(menu) = tray.menu() {
+            if let Some(item) = menu.get("toggle") {
+                if let Some(mi) = item.as_menuitem() {
+                    let _ = mi.set_text(label);
+                }
+            }
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn start_fn_key_monitor_retry_loop(app: AppHandle) {
     const FN_MONITOR_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
@@ -380,6 +401,8 @@ fn start_fn_key_monitor_retry_loop(app: AppHandle) {
     std::thread::spawn(move || {
         let mut retry_count = 0u32;
         let mut sleep_duration = FN_MONITOR_RETRY_INTERVAL;
+        // Only log the cap warning once to avoid spamming the log.
+        let mut cap_logged = false;
 
         loop {
             if FN_GLOBAL_MONITOR_REGISTERED.load(Ordering::SeqCst)
@@ -389,18 +412,23 @@ fn start_fn_key_monitor_retry_loop(app: AppHandle) {
             }
 
             if retry_count >= MAX_RETRIES {
-                eprintln!(
-                    "fn/Globe monitor: giving up after {} retries",
-                    MAX_RETRIES
-                );
-                break;
+                // Retries are capped: keep polling at the maximum backoff interval
+                // so we can still recover if permissions are granted later.
+                if !cap_logged {
+                    eprintln!(
+                        "fn/Globe monitor: retry count capped at {}; \
+                         continuing to poll every {:?} in case permissions are granted later",
+                        MAX_RETRIES, MAX_BACKOFF
+                    );
+                    cap_logged = true;
+                }
+                std::thread::sleep(MAX_BACKOFF);
+            } else {
+                std::thread::sleep(sleep_duration);
+                // Exponential backoff: double the interval, capped at MAX_BACKOFF
+                sleep_duration = (sleep_duration * 2).min(MAX_BACKOFF);
+                retry_count += 1;
             }
-
-            std::thread::sleep(sleep_duration);
-
-            // Exponential backoff: double the interval, capped at MAX_BACKOFF
-            sleep_duration = (sleep_duration * 2).min(MAX_BACKOFF);
-            retry_count += 1;
 
             if let Err(err) = app.run_on_main_thread({
                 let app = app.clone();
@@ -410,6 +438,9 @@ fn start_fn_key_monitor_retry_loop(app: AppHandle) {
                     {
                         setup_fn_key_monitor(app.clone());
                     }
+                    // Always refresh the tray label after a registration attempt so
+                    // it reflects the current state (stale ⌥Space → fn/Globe · ⌥Space).
+                    update_tray_shortcut_label(&app);
                 }
             }) {
                 eprintln!("fn/Globe monitor retry failed: {err}");

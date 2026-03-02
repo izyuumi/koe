@@ -194,6 +194,8 @@ function App() {
         setCopied(false);
         copiedResetTimerRef.current = null;
       }, 1500);
+    }).catch((err: unknown) => {
+      console.error("Failed to copy transcript to clipboard:", err);
     });
   };
 

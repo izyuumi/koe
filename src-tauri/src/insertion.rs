@@ -42,16 +42,35 @@ fn set_clipboard(text: &str) -> bool {
         .spawn()
     {
         Ok(mut child) => {
-            if let Some(mut stdin) = child.stdin.take() {
-                use std::io::Write;
-                if let Err(e) = stdin.write_all(text.as_bytes()) {
-                    eprintln!("Failed to write to pbcopy stdin: {}", e);
+            match child.stdin.take() {
+                None => {
+                    // stdin pipe unexpectedly unavailable — treat as failure.
+                    eprintln!("Failed to open pbcopy stdin pipe");
                     let _ = child.wait();
                     return false;
                 }
+                Some(mut stdin) => {
+                    use std::io::Write;
+                    if let Err(e) = stdin.write_all(text.as_bytes()) {
+                        eprintln!("Failed to write to pbcopy stdin: {}", e);
+                        let _ = child.wait();
+                        return false;
+                    }
+                    // Drop stdin to close the pipe before waiting so pbcopy
+                    // doesn't block waiting for more input.
+                }
             }
-            let _ = child.wait();
-            true
+            match child.wait() {
+                Ok(status) if status.success() => true,
+                Ok(status) => {
+                    eprintln!("pbcopy exited with non-zero status: {status}");
+                    false
+                }
+                Err(e) => {
+                    eprintln!("Failed to wait for pbcopy: {e}");
+                    false
+                }
+            }
         }
         Err(e) => {
             eprintln!("Failed to run pbcopy: {}", e);
