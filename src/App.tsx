@@ -3,6 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
+interface TranscriptSegment {
+  text: string;
+  start_ms: number;
+  end_ms: number;
+}
+
 /** How long to keep the HUD visible after dictation stops (ms) */
 const HUD_HIDE_DELAY_MS = 1500;
 
@@ -36,6 +42,12 @@ function App() {
     micLevel: 0,
     error: null,
   });
+
+  // Segment tracking for export
+  const [segments, setSegments] = useState<TranscriptSegment[]>([]);
+  const recordingStartRef = useRef<number>(0);
+  const lastSegmentEndRef = useRef<number>(0);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   // If onboarding is done on launch, hide the window
   useEffect(() => {
@@ -83,6 +95,14 @@ function App() {
         setState((s) => ({ ...s, partialResult: e.payload.text, error: null }));
       }),
       listen<{ text: string }>("transcript-final", (e) => {
+        const now = Date.now();
+        const startMs = lastSegmentEndRef.current;
+        const endMs = now - recordingStartRef.current;
+        lastSegmentEndRef.current = endMs;
+        setSegments((prev) => [
+          ...prev,
+          { text: e.payload.text, start_ms: startMs, end_ms: endMs },
+        ]);
         setState((s) => ({
           ...s,
           transcript: e.payload.text,
@@ -99,6 +119,9 @@ function App() {
             clearTimeout(hideTimerRef.current);
             hideTimerRef.current = null;
           }
+          recordingStartRef.current = Date.now();
+          lastSegmentEndRef.current = 0;
+          setSegments([]);
           setState((s) => ({
             ...s,
             isListening: true,
@@ -135,6 +158,16 @@ function App() {
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
   }, []);
+
+  const exportTranscript = async (format: "txt" | "md" | "srt") => {
+    if (segments.length === 0) return;
+    setExportError(null);
+    try {
+      await invoke("export_transcript", { segments, format });
+    } catch (e) {
+      setExportError(String(e));
+    }
+  };
 
   const toggleLanguage = () => {
     setLanguage((l) => (l === "en-US" ? "ja-JP" : "en-US"));
@@ -283,6 +316,15 @@ function App() {
         <button type="button" className="lang-badge" onClick={toggleLanguage} title="Toggle language">
           {language}
         </button>
+        {segments.length > 0 && !state.isListening && (
+          <div className="export-group" role="group" aria-label="Export transcript">
+            <span className="export-label">Export:</span>
+            <button type="button" className="export-btn" onClick={() => exportTranscript("txt")} title="Export as plain text">TXT</button>
+            <button type="button" className="export-btn" onClick={() => exportTranscript("md")} title="Export as Markdown">MD</button>
+            <button type="button" className="export-btn" onClick={() => exportTranscript("srt")} title="Export as SRT subtitle">SRT</button>
+          </div>
+        )}
+        {exportError && <span className="export-error" role="alert">{exportError}</span>}
         <span className="shortcut-hint">
           <kbd>⌥</kbd> + <kbd>Space</kbd>
         </span>
