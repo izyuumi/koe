@@ -46,11 +46,31 @@ function App() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Poll for fn/Globe capability until it becomes available (e.g. after the
+  // user grants Accessibility / Input Monitoring permissions mid-session).
   useEffect(() => {
-    invoke<boolean>("supports_fn_globe_shortcut")
-      .then((supported) => setSupportsFnGlobeShortcut(Boolean(supported)))
-      .catch(() => setSupportsFnGlobeShortcut(false));
-  }, []);
+    if (supportsFnGlobeShortcut) return; // already supported, stop polling
+
+    let cancelled = false;
+
+    const check = async () => {
+      try {
+        const supported = Boolean(
+          await invoke<boolean>("supports_fn_globe_shortcut")
+        );
+        if (!cancelled) setSupportsFnGlobeShortcut(supported);
+      } catch {
+        // backend not ready yet — ignore, retry next tick
+      }
+    };
+
+    check(); // immediate first check
+    const id = setInterval(check, 2000); // re-check every 2 s
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [supportsFnGlobeShortcut]);
 
   // Dismiss HUD with Escape key (#18)
   useEffect(() => {

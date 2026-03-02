@@ -22,7 +22,10 @@ pub fn insert_text_with_clipboard(text_to_insert: &str, text_for_clipboard: &str
     }
 
     // Simulate Cmd+V
-    paste_via_applescript();
+    if let Err(e) = paste_via_applescript() {
+        eprintln!("paste_via_applescript failed: {e}");
+        return;
+    }
 
     std::thread::sleep(CLIPBOARD_RESTORE_DELAY);
 
@@ -79,7 +82,7 @@ fn set_clipboard(text: &str) -> bool {
     }
 }
 
-fn paste_via_applescript() {
+fn paste_via_applescript() -> Result<(), String> {
     let mut child = match Command::new("osascript")
         .arg("-e")
         .arg(r#"tell application "System Events" to keystroke "v" using command down"#)
@@ -87,8 +90,7 @@ fn paste_via_applescript() {
     {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("Failed to spawn osascript: {}", e);
-            return;
+            return Err(format!("Failed to spawn osascript: {e}"));
         }
     };
 
@@ -96,21 +98,31 @@ fn paste_via_applescript() {
     let start = std::time::Instant::now();
     loop {
         match child.try_wait() {
-            Ok(Some(_)) => return,
+            Ok(Some(status)) => {
+                if status.success() {
+                    return Ok(());
+                } else {
+                    return Err(format!(
+                        "osascript exited with non-zero status: {status}"
+                    ));
+                }
+            }
             Ok(None) => {
                 if start.elapsed() >= APPLESCRIPT_TIMEOUT {
                     eprintln!("osascript timed out after {:?}, killing", APPLESCRIPT_TIMEOUT);
                     let _ = child.kill();
                     let _ = child.wait();
-                    return;
+                    return Err(format!(
+                        "osascript timed out after {:?}",
+                        APPLESCRIPT_TIMEOUT
+                    ));
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }
             Err(e) => {
-                eprintln!("Error waiting for osascript: {}", e);
                 let _ = child.kill();
                 let _ = child.wait();
-                return;
+                return Err(format!("Error waiting for osascript: {e}"));
             }
         }
     }
