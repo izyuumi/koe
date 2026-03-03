@@ -73,6 +73,7 @@ function App() {
   const shouldSuppressShutdownDuplicateRef = useRef(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const isExportingRef = useRef(false);
 
   const scheduleHideTimer = useCallback(() => {
     if (hideTimerRef.current) {
@@ -159,7 +160,7 @@ function App() {
           transcript: e.payload.text,
           partialResult: "",
         }));
-        if (!isListeningRef.current) {
+        if (!isListeningRef.current && !isExportingRef.current) {
           scheduleHideTimer();
         }
       }),
@@ -207,6 +208,7 @@ function App() {
       }),
       listen<{ message: string }>("speech-error", (e) => {
         isListeningRef.current = false;
+        stoppedAtRef.current = Date.now();
         setState((s) => ({
           ...s,
           error: e.payload.message,
@@ -231,6 +233,7 @@ function App() {
     );
     if (exportSegments.length === 0) return;
     if (isExporting) return;
+    isExportingRef.current = true;
     setIsExporting(true);
     setExportError(null);
     // Suspend auto-hide timer while export dialog is open
@@ -243,6 +246,7 @@ function App() {
     } catch (e) {
       setExportError(e instanceof Error ? e.message : typeof e === "string" ? e : "Export failed");
     } finally {
+      isExportingRef.current = false;
       setIsExporting(false);
       // Re-arm auto-hide if dictation is not active
       if (!isListeningRef.current) {
