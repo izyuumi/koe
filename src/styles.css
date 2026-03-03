@@ -360,10 +360,9 @@ kbd {
 .export-error {
   font-size: 10px;
   color: #ff453a;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 120px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 220px;
 }
 
 @media (prefers-reduced-motion: reduce) {

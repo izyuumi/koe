@@ -12,6 +12,12 @@ interface TranscriptSegment {
 /** How long to keep the HUD visible after dictation stops (ms) */
 const HUD_HIDE_DELAY_MS = 1500;
 
+/**
+ * Window (ms) after dictation stops during which a duplicate `transcript-final`
+ * event is treated as a SIGTERM re-emission artifact and suppressed.
+ */
+const SHUTDOWN_DEDUP_WINDOW_MS = 500;
+
 interface DictationState {
   isListening: boolean;
   transcript: string;
@@ -47,6 +53,7 @@ function App() {
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const recordingStartRef = useRef<number>(0);
   const lastSegmentEndRef = useRef<number>(0);
+  const stoppedAtRef = useRef<number>(0);
   const [exportError, setExportError] = useState<string | null>(null);
 
   // If onboarding is done on launch, hide the window
@@ -96,14 +103,15 @@ function App() {
       }),
       listen<{ text: string }>("transcript-final", (e) => {
         const now = Date.now();
+        // Suppress duplicate events emitted by the SIGTERM handler during shutdown.
+        // Only deduplicate within a short window after stop; never drop mid-session
+        // identical utterances, which would cause missing segments in exports.
+        if (now - stoppedAtRef.current < SHUTDOWN_DEDUP_WINDOW_MS) {
+          return;
+        }
         const startMs = lastSegmentEndRef.current;
         const endMs = now - recordingStartRef.current;
         setSegments((prev) => {
-          const lastSegment = prev[prev.length - 1];
-          if (lastSegment?.text === e.payload.text) {
-            return prev;
-          }
-
           lastSegmentEndRef.current = endMs;
           return [
             ...prev,
@@ -121,14 +129,16 @@ function App() {
       }),
       listen<{ listening: boolean }>("listening-state", (e) => {
         if (e.payload.listening) {
-          // Starting: cancel any pending hide, clear old transcript
+          // Starting: cancel any pending hide, clear old transcript and stale errors
           if (hideTimerRef.current) {
             clearTimeout(hideTimerRef.current);
             hideTimerRef.current = null;
           }
           recordingStartRef.current = Date.now();
           lastSegmentEndRef.current = 0;
+          stoppedAtRef.current = 0;
           setSegments([]);
+          setExportError(null);
           setState((s) => ({
             ...s,
             isListening: true,
@@ -138,7 +148,9 @@ function App() {
             micLevel: 0,
           }));
         } else {
-          // Stopping: keep HUD visible briefly so user sees final text
+          // Stopping: record timestamp for shutdown-dedup heuristic
+          stoppedAtRef.current = Date.now();
+          // Keep HUD visible briefly so user sees final text
           setState((s) => ({
             ...s,
             isListening: false,
@@ -172,7 +184,7 @@ function App() {
     try {
       await invoke("export_transcript", { segments, format });
     } catch (e) {
-      setExportError(String(e));
+      setExportError(e instanceof Error ? e.message : typeof e === "string" ? e : "Export failed");
     }
   };
 
