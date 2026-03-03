@@ -54,7 +54,9 @@ function App() {
   const recordingStartRef = useRef<number>(0);
   const lastSegmentEndRef = useRef<number>(0);
   const stoppedAtRef = useRef<number>(0);
+  const lastFinalTextRef = useRef<string>("");
   const [exportError, setExportError] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   // If onboarding is done on launch, hide the window
   useEffect(() => {
@@ -104,13 +106,17 @@ function App() {
       listen<{ text: string }>("transcript-final", (e) => {
         const now = Date.now();
         // Suppress duplicate events emitted by the SIGTERM handler during shutdown.
-        // Only deduplicate within a short window after stop; never drop mid-session
-        // identical utterances, which would cause missing segments in exports.
-        if (now - stoppedAtRef.current < SHUTDOWN_DEDUP_WINDOW_MS) {
+        // A true duplicate is defined as the same text arriving within the shutdown
+        // window — NOT every event within that window, to avoid dropping valid
+        // final segments that happen to arrive just after stop.
+        const isShuttingDown = now - stoppedAtRef.current < SHUTDOWN_DEDUP_WINDOW_MS;
+        const isTextDuplicate = e.payload.text === lastFinalTextRef.current;
+        if (isShuttingDown && isTextDuplicate) {
           return;
         }
         const startMs = lastSegmentEndRef.current;
         const endMs = now - recordingStartRef.current;
+        lastFinalTextRef.current = e.payload.text;
         setSegments((prev) => {
           lastSegmentEndRef.current = endMs;
           return [
@@ -136,6 +142,7 @@ function App() {
           }
           recordingStartRef.current = Date.now();
           lastSegmentEndRef.current = 0;
+          lastFinalTextRef.current = "";
           stoppedAtRef.current = 0;
           setSegments([]);
           setExportError(null);
@@ -180,11 +187,15 @@ function App() {
 
   const exportTranscript = async (format: "txt" | "md" | "srt") => {
     if (segments.length === 0) return;
+    if (isExporting) return;
+    setIsExporting(true);
     setExportError(null);
     try {
       await invoke("export_transcript", { segments, format });
     } catch (e) {
       setExportError(e instanceof Error ? e.message : typeof e === "string" ? e : "Export failed");
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -338,9 +349,9 @@ function App() {
         {segments.length > 0 && !state.isListening && (
           <div className="export-group" role="group" aria-label="Export transcript">
             <span className="export-label">Export:</span>
-            <button type="button" className="export-btn" onClick={() => exportTranscript("txt")} title="Export as plain text">TXT</button>
-            <button type="button" className="export-btn" onClick={() => exportTranscript("md")} title="Export as Markdown">MD</button>
-            <button type="button" className="export-btn" onClick={() => exportTranscript("srt")} title="Export as SRT subtitle">SRT</button>
+            <button type="button" className="export-btn" onClick={() => exportTranscript("txt")} disabled={isExporting} title="Export as plain text">TXT</button>
+            <button type="button" className="export-btn" onClick={() => exportTranscript("md")} disabled={isExporting} title="Export as Markdown">MD</button>
+            <button type="button" className="export-btn" onClick={() => exportTranscript("srt")} disabled={isExporting} title="Export as SRT subtitle">SRT</button>
           </div>
         )}
         {exportError && <span className="export-error" role="alert">{exportError}</span>}
