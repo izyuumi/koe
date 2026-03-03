@@ -56,6 +56,7 @@ function App() {
   const recordingStartRef = useRef<number>(0);
   const lastSegmentEndRef = useRef<number>(0);
   const lastFinalAtRef = useRef<number>(0);
+  const lastFinalTextRef = useRef<string>("");
   const stoppedAtRef = useRef<number>(0);
   const shouldSuppressShutdownDuplicateRef = useRef(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -112,7 +113,8 @@ function App() {
           shouldSuppressShutdownDuplicateRef.current &&
           stoppedAtRef.current > 0 &&
           now - stoppedAtRef.current < SHUTDOWN_DEDUP_WINDOW_MS &&
-          now - lastFinalAtRef.current < SHUTDOWN_DEDUP_WINDOW_MS;
+          now - lastFinalAtRef.current < SHUTDOWN_DEDUP_WINDOW_MS &&
+          e.payload.text === lastFinalTextRef.current;
         if (isShutdownDuplicate) {
           shouldSuppressShutdownDuplicateRef.current = false;
           return;
@@ -135,6 +137,7 @@ function App() {
           return next;
         });
         lastFinalAtRef.current = now;
+        lastFinalTextRef.current = e.payload.text;
         setState((s) => ({
           ...s,
           transcript: e.payload.text,
@@ -156,6 +159,7 @@ function App() {
           segmentCountRef.current = 0;
           lastSegmentEndRef.current = 0;
           lastFinalAtRef.current = 0;
+          lastFinalTextRef.current = "";
           stoppedAtRef.current = 0;
           shouldSuppressShutdownDuplicateRef.current = false;
           setSegments([]);
@@ -376,7 +380,9 @@ function App() {
             <button type="button" className="export-btn" onClick={() => exportTranscript("srt")} disabled={isExporting} title="Export as SRT subtitle">SRT</button>
           </div>
         )}
-        {exportError && <span className="export-error" role="alert">{exportError}</span>}
+        {exportError && segments.length > 0 && !state.isListening && (
+          <span className="export-error" role="alert">{exportError}</span>
+        )}
         <span className="shortcut-hint">
           <kbd>⌥</kbd> + <kbd>Space</kbd>
         </span>
