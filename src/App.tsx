@@ -24,6 +24,29 @@ interface DictationState {
   error: string | null;
 }
 
+function buildExportSegments(
+  segments: TranscriptSegment[],
+  partialResult: string,
+  recordingStartMs: number,
+  stoppedAtMs: number,
+): TranscriptSegment[] {
+  if (!partialResult) {
+    return segments;
+  }
+
+  const startMs = segments.length > 0 ? segments[segments.length - 1].end_ms : 0;
+  const endMs = recordingStartMs > 0 ? Math.max(0, (stoppedAtMs || Date.now()) - recordingStartMs) : 0;
+
+  return [
+    ...segments,
+    {
+      text: partialResult,
+      start_ms: startMs,
+      end_ms: Math.max(startMs, endMs),
+    },
+  ];
+}
+
 function App() {
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return localStorage.getItem("koe.onboarding.permissions.v1") !== "done";
@@ -49,6 +72,8 @@ function App() {
 
   // Segment tracking for export
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
+  const segmentsRef = useRef<TranscriptSegment[]>([]);
+  const partialResultRef = useRef("");
   const isListeningRef = useRef(false);
   const recordingStartRef = useRef<number>(0);
   const lastFinalAtRef = useRef<number>(0);
@@ -59,6 +84,13 @@ function App() {
   const [isExporting, setIsExporting] = useState(false);
 
   const scheduleHideTimer = useCallback(() => {
+    if (segmentsRef.current.length > 0 || partialResultRef.current) {
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+      return;
+    }
     if (hideTimerRef.current) {
       clearTimeout(hideTimerRef.current);
     }
@@ -111,6 +143,7 @@ function App() {
   useEffect(() => {
     const unlisten = Promise.all([
       listen<{ text: string }>("transcript-partial", (e) => {
+        partialResultRef.current = e.payload.text;
         setState((s) => ({ ...s, partialResult: e.payload.text, error: null }));
       }),
       listen<{ text: string }>("transcript-final", (e) => {
@@ -130,10 +163,13 @@ function App() {
         shouldSuppressShutdownDuplicateRef.current = false;
         const endMs = Math.max(0, now - recordingStartRef.current);
         setSegments((prev) => {
-          return reconcileTranscriptSegments(prev, e.payload.text, endMs);
+          const nextSegments = reconcileTranscriptSegments(prev, e.payload.text, endMs);
+          segmentsRef.current = nextSegments;
+          return nextSegments;
         });
         lastFinalAtRef.current = now;
         lastFinalTextRef.current = e.payload.text;
+        partialResultRef.current = "";
         setState((s) => ({
           ...s,
           transcript: e.payload.text,
@@ -159,6 +195,8 @@ function App() {
           lastFinalTextRef.current = "";
           stoppedAtRef.current = 0;
           shouldSuppressShutdownDuplicateRef.current = false;
+          segmentsRef.current = [];
+          partialResultRef.current = "";
           setSegments([]);
           setExportError(null);
           setState((s) => ({
@@ -201,12 +239,18 @@ function App() {
   }, [scheduleHideTimer]);
 
   const exportTranscript = async (format: "txt" | "md" | "srt") => {
-    if (segments.length === 0) return;
+    const exportSegments = buildExportSegments(
+      segments,
+      state.partialResult,
+      recordingStartRef.current,
+      stoppedAtRef.current,
+    );
+    if (exportSegments.length === 0) return;
     if (isExporting) return;
     setIsExporting(true);
     setExportError(null);
     try {
-      await invoke("export_transcript", { segments, format });
+      await invoke("export_transcript", { segments: exportSegments, format });
     } catch (e) {
       setExportError(e instanceof Error ? e.message : typeof e === "string" ? e : "Export failed");
     } finally {
@@ -224,6 +268,13 @@ function App() {
 
   const displayText = state.partialResult || state.transcript;
   const isPartial = !!state.partialResult;
+  const exportSegments = buildExportSegments(
+    segments,
+    state.partialResult,
+    recordingStartRef.current,
+    stoppedAtRef.current,
+  );
+  const hasExportableTranscript = exportSegments.length > 0;
   const micLevelWidth = `${Math.max(0, Math.min(state.micLevel, 1)) * 100}%`;
   const statusText = state.error
     ? "Error"
@@ -361,7 +412,7 @@ function App() {
         <button type="button" className="lang-badge" onClick={toggleLanguage} title="Toggle language">
           {language}
         </button>
-        {segments.length > 0 && !state.isListening && (
+        {hasExportableTranscript && !state.isListening && (
           <div className="export-group" role="group" aria-label="Export transcript">
             <span className="export-label">Export:</span>
             <button type="button" className="export-btn" onClick={() => exportTranscript("txt")} disabled={isExporting} title="Export as plain text">TXT</button>
@@ -369,7 +420,7 @@ function App() {
             <button type="button" className="export-btn" onClick={() => exportTranscript("srt")} disabled={isExporting} title="Export as SRT subtitle">SRT</button>
           </div>
         )}
-        {exportError && segments.length > 0 && !state.isListening && (
+        {exportError && hasExportableTranscript && !state.isListening && (
           <span className="export-error" role="alert">{exportError}</span>
         )}
         <span className="shortcut-hint">
