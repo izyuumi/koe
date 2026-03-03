@@ -34,17 +34,8 @@ function buildExportSegments(
     return segments;
   }
 
-  const startMs = segments.length > 0 ? segments[segments.length - 1].end_ms : 0;
   const endMs = recordingStartMs > 0 ? Math.max(0, (stoppedAtMs || Date.now()) - recordingStartMs) : 0;
-
-  return [
-    ...segments,
-    {
-      text: partialResult,
-      start_ms: startMs,
-      end_ms: Math.max(startMs, endMs),
-    },
-  ];
+  return reconcileTranscriptSegments(segments, partialResult, endMs);
 }
 
 function App() {
@@ -84,13 +75,6 @@ function App() {
   const [isExporting, setIsExporting] = useState(false);
 
   const scheduleHideTimer = useCallback(() => {
-    if (segmentsRef.current.length > 0 || partialResultRef.current) {
-      if (hideTimerRef.current) {
-        clearTimeout(hideTimerRef.current);
-        hideTimerRef.current = null;
-      }
-      return;
-    }
     if (hideTimerRef.current) {
       clearTimeout(hideTimerRef.current);
     }
