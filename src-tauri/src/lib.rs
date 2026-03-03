@@ -148,6 +148,19 @@ fn supports_fn_globe_shortcut() -> bool {
     }
 }
 
+#[tauri::command]
+fn can_support_fn_globe_shortcut() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos_supports_fn_globe_monitor()
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
 fn open_system_settings(url: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -463,6 +476,7 @@ pub fn run() {
             open_microphone_settings,
             open_speech_settings,
             open_accessibility_settings,
+            can_support_fn_globe_shortcut,
             supports_fn_globe_shortcut,
         ])
         .setup(|app| {

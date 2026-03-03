@@ -30,6 +30,7 @@ function App() {
   });
 
   const [supportsFnGlobeShortcut, setSupportsFnGlobeShortcut] = useState<boolean>(false);
+  const [shouldPollFnGlobeShortcut, setShouldPollFnGlobeShortcut] = useState<boolean>(true);
 
   const [state, setState] = useState<DictationState>({
     isListening: false,
@@ -49,12 +50,24 @@ function App() {
   // Poll for fn/Globe capability until it becomes available (e.g. after the
   // user grants Accessibility / Input Monitoring permissions mid-session).
   useEffect(() => {
-    if (supportsFnGlobeShortcut) return; // already supported, stop polling
+    if (supportsFnGlobeShortcut || !shouldPollFnGlobeShortcut) return;
 
     let cancelled = false;
+    let canEverSupport: boolean | null = null;
 
     const check = async () => {
       try {
+        if (canEverSupport === null) {
+          canEverSupport = Boolean(
+            await invoke<boolean>("can_support_fn_globe_shortcut")
+          );
+
+          if (!canEverSupport) {
+            if (!cancelled) setShouldPollFnGlobeShortcut(false);
+            return;
+          }
+        }
+
         const supported = Boolean(
           await invoke<boolean>("supports_fn_globe_shortcut")
         );
@@ -70,7 +83,7 @@ function App() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [supportsFnGlobeShortcut]);
+  }, [shouldPollFnGlobeShortcut, supportsFnGlobeShortcut]);
 
   // Dismiss HUD with Escape key (#18)
   useEffect(() => {

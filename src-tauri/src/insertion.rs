@@ -21,17 +21,19 @@ pub fn insert_text_with_clipboard(text_to_insert: &str, text_for_clipboard: &str
         return;
     }
 
+    let expected_change_count = clipboard_change_count();
+
     // Simulate Cmd+V
     if let Err(e) = paste_via_applescript() {
         eprintln!("paste_via_applescript failed: {e}");
-        restore_clipboard_if_unchanged(text_to_insert, text_for_clipboard);
+        restore_clipboard_if_unchanged(expected_change_count, text_to_insert, text_for_clipboard);
         return;
     }
 
     std::thread::sleep(CLIPBOARD_RESTORE_DELAY);
 
     // Restore the desired clipboard content (best-effort).
-    restore_clipboard_if_unchanged(text_to_insert, text_for_clipboard);
+    restore_clipboard_if_unchanged(expected_change_count, text_to_insert, text_for_clipboard);
 }
 
 /// Convenience wrapper: insert and leave the same text on the clipboard.
@@ -101,8 +103,37 @@ fn get_clipboard() -> Option<String> {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn clipboard_change_count() -> Option<isize> {
+    use objc2_app_kit::NSPasteboard;
+
+    Some(NSPasteboard::generalPasteboard().changeCount())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn clipboard_change_count() -> Option<isize> {
+    None
+}
+
 /// Only restore the clipboard if it still holds the injected paste text.
-fn restore_clipboard_if_unchanged(text_to_insert: &str, text_for_clipboard: &str) {
+fn restore_clipboard_if_unchanged(
+    expected_change_count: Option<isize>,
+    text_to_insert: &str,
+    text_for_clipboard: &str,
+) {
+    if let Some(expected_change_count) = expected_change_count {
+        match clipboard_change_count() {
+            Some(current_change_count) if current_change_count == expected_change_count => {
+                let _ = set_clipboard(text_for_clipboard);
+            }
+            Some(_) => {}
+            None => {
+                eprintln!("Failed to read clipboard change count; skipping restore");
+            }
+        }
+        return;
+    }
+
     match get_clipboard() {
         Some(current) if current == text_to_insert => {
             let _ = set_clipboard(text_for_clipboard);
