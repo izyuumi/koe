@@ -47,7 +47,7 @@ fn format_as_txt(segments: &[TranscriptSegment]) -> String {
         .iter()
         .map(|s| s.text.as_str())
         .collect::<Vec<_>>()
-        .join(" ")
+        .join("")
 }
 
 fn format_as_md(segments: &[TranscriptSegment]) -> String {
