@@ -38,6 +38,14 @@ function buildExportSegments(
   return reconcileTranscriptSegments(segments, partialResult, endMs);
 }
 
+function getExportSettleDelayMs(lastFinalAtMs: number, stoppedAtMs: number, isListening: boolean): number {
+  if (isListening || stoppedAtMs <= 0 || lastFinalAtMs >= stoppedAtMs) {
+    return 0;
+  }
+
+  return Math.max(0, stoppedAtMs + HUD_HIDE_DELAY_MS - Date.now());
+}
+
 function App() {
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return localStorage.getItem("koe.onboarding.permissions.v1") !== "done";
@@ -225,13 +233,6 @@ function App() {
   }, [scheduleHideTimer]);
 
   const exportTranscript = async (format: "txt" | "md" | "srt") => {
-    const exportSegments = buildExportSegments(
-      segments,
-      state.partialResult,
-      recordingStartRef.current,
-      stoppedAtRef.current,
-    );
-    if (exportSegments.length === 0) return;
     if (isExporting) return;
     isExportingRef.current = true;
     setIsExporting(true);
@@ -242,6 +243,25 @@ function App() {
       hideTimerRef.current = null;
     }
     try {
+      const settleDelayMs = getExportSettleDelayMs(
+        lastFinalAtRef.current,
+        stoppedAtRef.current,
+        isListeningRef.current,
+      );
+      if (settleDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
+      }
+
+      const exportSegments = buildExportSegments(
+        segmentsRef.current,
+        partialResultRef.current,
+        recordingStartRef.current,
+        stoppedAtRef.current,
+      );
+      if (exportSegments.length === 0) {
+        return;
+      }
+
       await invoke("export_transcript", { segments: exportSegments, format });
     } catch (e) {
       setExportError(e instanceof Error ? e.message : typeof e === "string" ? e : "Export failed");
