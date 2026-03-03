@@ -98,11 +98,18 @@ function App() {
         const now = Date.now();
         const startMs = lastSegmentEndRef.current;
         const endMs = now - recordingStartRef.current;
-        lastSegmentEndRef.current = endMs;
-        setSegments((prev) => [
-          ...prev,
-          { text: e.payload.text, start_ms: startMs, end_ms: endMs },
-        ]);
+        setSegments((prev) => {
+          const lastSegment = prev[prev.length - 1];
+          if (lastSegment?.text === e.payload.text) {
+            return prev;
+          }
+
+          lastSegmentEndRef.current = endMs;
+          return [
+            ...prev,
+            { text: e.payload.text, start_ms: startMs, end_ms: endMs },
+          ];
+        });
         setState((s) => ({
           ...s,
           transcript: e.payload.text,
