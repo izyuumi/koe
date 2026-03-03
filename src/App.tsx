@@ -109,33 +109,40 @@ function App() {
       }),
       listen<{ text: string }>("transcript-final", (e) => {
         const now = Date.now();
+        const previousFinalText = lastFinalTextRef.current;
         const isShutdownDuplicate =
           shouldSuppressShutdownDuplicateRef.current &&
           stoppedAtRef.current > 0 &&
           now - stoppedAtRef.current < SHUTDOWN_DEDUP_WINDOW_MS &&
           now - lastFinalAtRef.current < SHUTDOWN_DEDUP_WINDOW_MS &&
-          e.payload.text === lastFinalTextRef.current;
+          e.payload.text === previousFinalText;
         if (isShutdownDuplicate) {
           shouldSuppressShutdownDuplicateRef.current = false;
           return;
         }
 
         shouldSuppressShutdownDuplicateRef.current = false;
-        const startMs = lastSegmentEndRef.current;
-        const endMs = now - recordingStartRef.current;
-        setSegments((prev) => {
-          const next = [
-            ...prev,
-            { text: e.payload.text, start_ms: startMs, end_ms: endMs },
-          ];
-          segmentCountRef.current = next.length;
-          lastSegmentEndRef.current = endMs;
-          if (!isListeningRef.current && hideTimerRef.current) {
-            clearTimeout(hideTimerRef.current);
-            hideTimerRef.current = null;
-          }
-          return next;
-        });
+        const appendedText =
+          previousFinalText && e.payload.text.startsWith(previousFinalText)
+            ? e.payload.text.slice(previousFinalText.length)
+            : e.payload.text;
+        if (appendedText) {
+          const startMs = lastSegmentEndRef.current;
+          const endMs = now - recordingStartRef.current;
+          setSegments((prev) => {
+            const next = [
+              ...prev,
+              { text: appendedText, start_ms: startMs, end_ms: endMs },
+            ];
+            segmentCountRef.current = next.length;
+            lastSegmentEndRef.current = endMs;
+            if (!isListeningRef.current && hideTimerRef.current) {
+              clearTimeout(hideTimerRef.current);
+              hideTimerRef.current = null;
+            }
+            return next;
+          });
+        }
         lastFinalAtRef.current = now;
         lastFinalTextRef.current = e.payload.text;
         setState((s) => ({
