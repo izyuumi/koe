@@ -13,10 +13,10 @@ interface TranscriptSegment {
 const HUD_HIDE_DELAY_MS = 1500;
 
 /**
- * Window (ms) after dictation stops during which a duplicate `transcript-final`
- * event is treated as a SIGTERM re-emission artifact and suppressed.
+ * Tight timing window (ms) used to suppress the single duplicate `transcript-final`
+ * event that can be re-emitted by the SIGTERM shutdown path.
  */
-const SHUTDOWN_DEDUP_WINDOW_MS = 500;
+const SHUTDOWN_DEDUP_WINDOW_MS = 75;
 
 interface DictationState {
   isListening: boolean;
@@ -51,10 +51,13 @@ function App() {
 
   // Segment tracking for export
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
+  const segmentCountRef = useRef<number>(0);
+  const isListeningRef = useRef(false);
   const recordingStartRef = useRef<number>(0);
   const lastSegmentEndRef = useRef<number>(0);
+  const lastFinalAtRef = useRef<number>(0);
   const stoppedAtRef = useRef<number>(0);
-  const lastFinalTextRef = useRef<string>("");
+  const shouldSuppressShutdownDuplicateRef = useRef(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -105,25 +108,33 @@ function App() {
       }),
       listen<{ text: string }>("transcript-final", (e) => {
         const now = Date.now();
-        // Suppress duplicate events emitted by the SIGTERM handler during shutdown.
-        // A true duplicate is defined as the same text arriving within the shutdown
-        // window — NOT every event within that window, to avoid dropping valid
-        // final segments that happen to arrive just after stop.
-        const isShuttingDown = now - stoppedAtRef.current < SHUTDOWN_DEDUP_WINDOW_MS;
-        const isTextDuplicate = e.payload.text === lastFinalTextRef.current;
-        if (isShuttingDown && isTextDuplicate) {
+        const isShutdownDuplicate =
+          shouldSuppressShutdownDuplicateRef.current &&
+          stoppedAtRef.current > 0 &&
+          now - stoppedAtRef.current < SHUTDOWN_DEDUP_WINDOW_MS &&
+          now - lastFinalAtRef.current < SHUTDOWN_DEDUP_WINDOW_MS;
+        if (isShutdownDuplicate) {
+          shouldSuppressShutdownDuplicateRef.current = false;
           return;
         }
+
+        shouldSuppressShutdownDuplicateRef.current = false;
         const startMs = lastSegmentEndRef.current;
         const endMs = now - recordingStartRef.current;
-        lastFinalTextRef.current = e.payload.text;
         setSegments((prev) => {
-          lastSegmentEndRef.current = endMs;
-          return [
+          const next = [
             ...prev,
             { text: e.payload.text, start_ms: startMs, end_ms: endMs },
           ];
+          segmentCountRef.current = next.length;
+          lastSegmentEndRef.current = endMs;
+          if (!isListeningRef.current && hideTimerRef.current) {
+            clearTimeout(hideTimerRef.current);
+            hideTimerRef.current = null;
+          }
+          return next;
         });
+        lastFinalAtRef.current = now;
         setState((s) => ({
           ...s,
           transcript: e.payload.text,
@@ -140,10 +151,13 @@ function App() {
             clearTimeout(hideTimerRef.current);
             hideTimerRef.current = null;
           }
+          isListeningRef.current = true;
           recordingStartRef.current = Date.now();
+          segmentCountRef.current = 0;
           lastSegmentEndRef.current = 0;
-          lastFinalTextRef.current = "";
+          lastFinalAtRef.current = 0;
           stoppedAtRef.current = 0;
+          shouldSuppressShutdownDuplicateRef.current = false;
           setSegments([]);
           setExportError(null);
           setState((s) => ({
@@ -155,21 +169,29 @@ function App() {
             micLevel: 0,
           }));
         } else {
-          // Stopping: record timestamp for shutdown-dedup heuristic
+          // Stopping: arm a one-shot, timing-only dedup for the SIGTERM artifact.
+          isListeningRef.current = false;
           stoppedAtRef.current = Date.now();
+          shouldSuppressShutdownDuplicateRef.current = lastFinalAtRef.current > 0;
           // Keep HUD visible briefly so user sees final text
           setState((s) => ({
             ...s,
             isListening: false,
             micLevel: 0,
           }));
-          hideTimerRef.current = setTimeout(() => {
-            getCurrentWebviewWindow().hide().catch(() => {});
-            hideTimerRef.current = null;
-          }, HUD_HIDE_DELAY_MS);
+          if (segmentCountRef.current === 0) {
+            if (hideTimerRef.current) {
+              clearTimeout(hideTimerRef.current);
+            }
+            hideTimerRef.current = setTimeout(() => {
+              getCurrentWebviewWindow().hide().catch(() => {});
+              hideTimerRef.current = null;
+            }, HUD_HIDE_DELAY_MS);
+          }
         }
       }),
       listen<{ message: string }>("speech-error", (e) => {
+        isListeningRef.current = false;
         setState((s) => ({
           ...s,
           error: e.payload.message,
