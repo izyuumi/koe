@@ -24,13 +24,14 @@ pub fn insert_text_with_clipboard(text_to_insert: &str, text_for_clipboard: &str
     // Simulate Cmd+V
     if let Err(e) = paste_via_applescript() {
         eprintln!("paste_via_applescript failed: {e}");
+        restore_clipboard_if_unchanged(text_to_insert, text_for_clipboard);
         return;
     }
 
     std::thread::sleep(CLIPBOARD_RESTORE_DELAY);
 
     // Restore the desired clipboard content (best-effort).
-    let _ = set_clipboard(text_for_clipboard);
+    restore_clipboard_if_unchanged(text_to_insert, text_for_clipboard);
 }
 
 /// Convenience wrapper: insert and leave the same text on the clipboard.
@@ -78,6 +79,37 @@ fn set_clipboard(text: &str) -> bool {
         Err(e) => {
             eprintln!("Failed to run pbcopy: {}", e);
             false
+        }
+    }
+}
+
+/// Read text from the system clipboard via pbpaste.
+fn get_clipboard() -> Option<String> {
+    match Command::new("pbpaste").output() {
+        Ok(output) => {
+            if output.status.success() {
+                String::from_utf8(output.stdout).ok()
+            } else {
+                eprintln!("pbpaste exited with non-zero status: {}", output.status);
+                None
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to run pbpaste: {e}");
+            None
+        }
+    }
+}
+
+/// Only restore the clipboard if it still holds the injected paste text.
+fn restore_clipboard_if_unchanged(text_to_insert: &str, text_for_clipboard: &str) {
+    match get_clipboard() {
+        Some(current) if current == text_to_insert => {
+            let _ = set_clipboard(text_for_clipboard);
+        }
+        Some(_) => {}
+        None => {
+            eprintln!("Failed to read clipboard; skipping restore");
         }
     }
 }
