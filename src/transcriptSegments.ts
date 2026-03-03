@@ -44,9 +44,12 @@ export function reconcileTranscriptSegments(
       continue;
     }
 
+    const ratio = remainingPrefix / segment.text.length;
+    const adjustedEndMs = segment.start_ms + Math.round((segment.end_ms - segment.start_ms) * ratio);
     nextSegments.push({
       ...segment,
       text: segment.text.slice(0, remainingPrefix),
+      end_ms: adjustedEndMs,
     });
     remainingPrefix = 0;
     break;

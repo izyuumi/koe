@@ -233,12 +233,21 @@ function App() {
     if (isExporting) return;
     setIsExporting(true);
     setExportError(null);
+    // Suspend auto-hide timer while export dialog is open
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
     try {
       await invoke("export_transcript", { segments: exportSegments, format });
     } catch (e) {
       setExportError(e instanceof Error ? e.message : typeof e === "string" ? e : "Export failed");
     } finally {
       setIsExporting(false);
+      // Re-arm auto-hide if dictation is not active
+      if (!isListeningRef.current) {
+        scheduleHideTimer();
+      }
     }
   };
 
