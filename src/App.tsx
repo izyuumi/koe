@@ -2,12 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-
-interface TranscriptSegment {
-  text: string;
-  start_ms: number;
-  end_ms: number;
-}
+import {
+  reconcileTranscriptSegments,
+  type TranscriptSegment,
+} from "./transcriptSegments";
 
 /** How long to keep the HUD visible after dictation stops (ms) */
 const HUD_HIDE_DELAY_MS = 1500;
@@ -51,16 +49,24 @@ function App() {
 
   // Segment tracking for export
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
-  const segmentCountRef = useRef<number>(0);
   const isListeningRef = useRef(false);
   const recordingStartRef = useRef<number>(0);
-  const lastSegmentEndRef = useRef<number>(0);
   const lastFinalAtRef = useRef<number>(0);
   const lastFinalTextRef = useRef<string>("");
   const stoppedAtRef = useRef<number>(0);
   const shouldSuppressShutdownDuplicateRef = useRef(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+
+  const scheduleHideTimer = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+    }
+    hideTimerRef.current = setTimeout(() => {
+      getCurrentWebviewWindow().hide().catch(() => {});
+      hideTimerRef.current = null;
+    }, HUD_HIDE_DELAY_MS);
+  }, []);
 
   // If onboarding is done on launch, hide the window
   useEffect(() => {
@@ -122,27 +128,10 @@ function App() {
         }
 
         shouldSuppressShutdownDuplicateRef.current = false;
-        const appendedText =
-          previousFinalText && e.payload.text.startsWith(previousFinalText)
-            ? e.payload.text.slice(previousFinalText.length)
-            : e.payload.text;
-        if (appendedText) {
-          const startMs = lastSegmentEndRef.current;
-          const endMs = now - recordingStartRef.current;
-          setSegments((prev) => {
-            const next = [
-              ...prev,
-              { text: appendedText, start_ms: startMs, end_ms: endMs },
-            ];
-            segmentCountRef.current = next.length;
-            lastSegmentEndRef.current = endMs;
-            if (!isListeningRef.current && hideTimerRef.current) {
-              clearTimeout(hideTimerRef.current);
-              hideTimerRef.current = null;
-            }
-            return next;
-          });
-        }
+        const endMs = Math.max(0, now - recordingStartRef.current);
+        setSegments((prev) => {
+          return reconcileTranscriptSegments(prev, e.payload.text, endMs);
+        });
         lastFinalAtRef.current = now;
         lastFinalTextRef.current = e.payload.text;
         setState((s) => ({
@@ -150,6 +139,9 @@ function App() {
           transcript: e.payload.text,
           partialResult: "",
         }));
+        if (!isListeningRef.current) {
+          scheduleHideTimer();
+        }
       }),
       listen<{ level: number }>("mic-level", (e) => {
         setState((s) => ({ ...s, micLevel: e.payload.level }));
@@ -163,8 +155,6 @@ function App() {
           }
           isListeningRef.current = true;
           recordingStartRef.current = Date.now();
-          segmentCountRef.current = 0;
-          lastSegmentEndRef.current = 0;
           lastFinalAtRef.current = 0;
           lastFinalTextRef.current = "";
           stoppedAtRef.current = 0;
@@ -190,15 +180,7 @@ function App() {
             isListening: false,
             micLevel: 0,
           }));
-          if (segmentCountRef.current === 0) {
-            if (hideTimerRef.current) {
-              clearTimeout(hideTimerRef.current);
-            }
-            hideTimerRef.current = setTimeout(() => {
-              getCurrentWebviewWindow().hide().catch(() => {});
-              hideTimerRef.current = null;
-            }, HUD_HIDE_DELAY_MS);
-          }
+          scheduleHideTimer();
         }
       }),
       listen<{ message: string }>("speech-error", (e) => {
@@ -216,7 +198,7 @@ function App() {
       unlisten.then((fns) => fns.forEach((fn) => fn()));
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
-  }, []);
+  }, [scheduleHideTimer]);
 
   const exportTranscript = async (format: "txt" | "md" | "srt") => {
     if (segments.length === 0) return;
