@@ -52,7 +52,7 @@ fn format_as_txt(segments: &[TranscriptSegment]) -> String {
 
 fn format_as_md(segments: &[TranscriptSegment]) -> String {
     let mut out = String::from("# Transcript\n\n");
-    for (i, seg) in segments.iter().enumerate() {
+    for seg in segments.iter() {
         let timestamp = ms_to_human(seg.start_ms);
         if segments.len() == 1 {
             // Single segment — no per-line timestamps needed
@@ -61,7 +61,6 @@ fn format_as_md(segments: &[TranscriptSegment]) -> String {
         } else {
             out.push_str(&format!("**[{}]** {}\n\n", timestamp, seg.text));
         }
-        let _ = i; // suppress unused warning
     }
     out
 }

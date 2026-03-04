@@ -233,7 +233,7 @@ function App() {
   }, [scheduleHideTimer]);
 
   const exportTranscript = async (format: "txt" | "md" | "srt") => {
-    if (isExporting) return;
+    if (isExportingRef.current) return;
     isExportingRef.current = true;
     setIsExporting(true);
     setExportError(null);
