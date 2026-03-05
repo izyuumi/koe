@@ -65,7 +65,7 @@ function splitTranscriptAcrossSegments(
   let consumedSemanticChars = 0;
   let targetSemanticChars = 0;
 
-  return segments.map((segment, segmentIndex) => {
+  const splitSegments = segments.map((segment, segmentIndex) => {
     targetSemanticChars += semanticBoundaries[segmentIndex];
     const sliceStart = nextIndex;
 
@@ -96,6 +96,49 @@ function splitTranscriptAcrossSegments(
       text: nextCodePoints.slice(sliceStart, nextIndex).join(""),
     };
   });
+
+  return mergeInsignificantSegments(splitSegments);
+}
+
+function isInsignificantSegmentText(text: string): boolean {
+  return getSemanticCharCount(text) === 0;
+}
+
+function mergeInsignificantSegments(segments: TranscriptSegment[]): TranscriptSegment[] {
+  const normalized: TranscriptSegment[] = [];
+  let leadingInsignificantText = "";
+  let leadingStartMs: number | null = null;
+
+  for (const segment of segments) {
+    if (!isInsignificantSegmentText(segment.text)) {
+      if (leadingInsignificantText) {
+        normalized.push({
+          ...segment,
+          text: `${leadingInsignificantText}${segment.text}`,
+          start_ms: leadingStartMs ?? segment.start_ms,
+        });
+        leadingInsignificantText = "";
+        leadingStartMs = null;
+      } else {
+        normalized.push({ ...segment });
+      }
+      continue;
+    }
+
+    const previousSegment = normalized[normalized.length - 1];
+    if (previousSegment) {
+      previousSegment.text += segment.text;
+      previousSegment.end_ms = segment.end_ms;
+      continue;
+    }
+
+    if (leadingStartMs === null) {
+      leadingStartMs = segment.start_ms;
+    }
+    leadingInsignificantText += segment.text;
+  }
+
+  return normalized;
 }
 
 export function reconcileTranscriptSegments(
