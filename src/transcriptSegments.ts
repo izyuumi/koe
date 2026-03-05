@@ -7,14 +7,24 @@ export interface TranscriptSegment {
 const INSIGNIFICANT_TRANSCRIPT_CHARS = /[\s\p{P}]/u;
 
 function getSharedPrefixLength(a: string, b: string): number {
-  const maxLength = Math.min(a.length, b.length);
+  const aCodePoints = Array.from(a);
+  const bCodePoints = Array.from(b);
+  const maxLength = Math.min(aCodePoints.length, bCodePoints.length);
   let index = 0;
 
-  while (index < maxLength && a[index] === b[index]) {
+  while (index < maxLength && aCodePoints[index] === bCodePoints[index]) {
     index += 1;
   }
 
   return index;
+}
+
+function getCodePointLength(text: string): number {
+  return Array.from(text).length;
+}
+
+function sliceByCodePoints(text: string, start: number, end?: number): string {
+  return Array.from(text).slice(start, end).join("");
 }
 
 export function getTranscriptText(segments: TranscriptSegment[]): string {
@@ -50,6 +60,7 @@ function splitTranscriptAcrossSegments(
   nextTranscript: string,
 ): TranscriptSegment[] {
   const semanticBoundaries = segments.map((segment) => getSemanticCharCount(segment.text));
+  const nextCodePoints = Array.from(nextTranscript);
   let nextIndex = 0;
   let consumedSemanticChars = 0;
   let targetSemanticChars = 0;
@@ -59,13 +70,13 @@ function splitTranscriptAcrossSegments(
     const sliceStart = nextIndex;
 
     if (segmentIndex === segments.length - 1) {
-      nextIndex = nextTranscript.length;
+      nextIndex = nextCodePoints.length;
     } else {
       while (
-        nextIndex < nextTranscript.length &&
+        nextIndex < nextCodePoints.length &&
         consumedSemanticChars < targetSemanticChars
       ) {
-        const char = nextTranscript[nextIndex];
+        const char = nextCodePoints[nextIndex];
         if (!INSIGNIFICANT_TRANSCRIPT_CHARS.test(char)) {
           consumedSemanticChars += 1;
         }
@@ -73,8 +84,8 @@ function splitTranscriptAcrossSegments(
       }
 
       while (
-        nextIndex < nextTranscript.length &&
-        INSIGNIFICANT_TRANSCRIPT_CHARS.test(nextTranscript[nextIndex])
+        nextIndex < nextCodePoints.length &&
+        INSIGNIFICANT_TRANSCRIPT_CHARS.test(nextCodePoints[nextIndex])
       ) {
         nextIndex += 1;
       }
@@ -82,7 +93,7 @@ function splitTranscriptAcrossSegments(
 
     return {
       ...segment,
-      text: nextTranscript.slice(sliceStart, nextIndex),
+      text: nextCodePoints.slice(sliceStart, nextIndex).join(""),
     };
   });
 }
@@ -113,24 +124,25 @@ export function reconcileTranscriptSegments(
       break;
     }
 
-    if (remainingPrefix >= segment.text.length) {
+    const segmentLength = getCodePointLength(segment.text);
+    if (remainingPrefix >= segmentLength) {
       nextSegments.push(segment);
-      remainingPrefix -= segment.text.length;
+      remainingPrefix -= segmentLength;
       continue;
     }
 
-    const ratio = remainingPrefix / segment.text.length;
+    const ratio = remainingPrefix / segmentLength;
     const adjustedEndMs = segment.start_ms + Math.round((segment.end_ms - segment.start_ms) * ratio);
     nextSegments.push({
       ...segment,
-      text: segment.text.slice(0, remainingPrefix),
+      text: sliceByCodePoints(segment.text, 0, remainingPrefix),
       end_ms: adjustedEndMs,
     });
     remainingPrefix = 0;
     break;
   }
 
-  const revisedText = nextTranscript.slice(sharedPrefixLength);
+  const revisedText = sliceByCodePoints(nextTranscript, sharedPrefixLength);
   if (revisedText) {
     const revisedStartMs =
       nextSegments.length > 0 ? nextSegments[nextSegments.length - 1].end_ms : 0;
