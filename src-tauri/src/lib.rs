@@ -1,5 +1,6 @@
 mod speech;
 mod insertion;
+mod export;
 
 use tauri::{
     AppHandle, Emitter, Manager,
@@ -155,6 +156,7 @@ pub fn run() {
             open_microphone_settings,
             open_speech_settings,
             open_accessibility_settings,
+            export::export_transcript,
         ])
         .setup(|app| {
             // Build tray menu

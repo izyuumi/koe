@@ -2,9 +2,19 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import {
+  reconcileTranscriptSegments,
+  type TranscriptSegment,
+} from "./transcriptSegments";
 
 /** How long to keep the HUD visible after dictation stops (ms) */
 const HUD_HIDE_DELAY_MS = 1500;
+
+/**
+ * Tight timing window (ms) used to suppress the single duplicate `transcript-final`
+ * event that can be re-emitted by the SIGTERM shutdown path.
+ */
+const SHUTDOWN_DEDUP_WINDOW_MS = 75;
 
 interface DictationState {
   isListening: boolean;
@@ -12,6 +22,28 @@ interface DictationState {
   partialResult: string;
   micLevel: number;
   error: string | null;
+}
+
+function buildExportSegments(
+  segments: TranscriptSegment[],
+  partialResult: string,
+  recordingStartMs: number,
+  stoppedAtMs: number,
+): TranscriptSegment[] {
+  if (!partialResult) {
+    return segments;
+  }
+
+  const endMs = recordingStartMs > 0 ? Math.max(0, (stoppedAtMs || Date.now()) - recordingStartMs) : 0;
+  return reconcileTranscriptSegments(segments, partialResult, endMs);
+}
+
+function getExportSettleDelayMs(lastFinalAtMs: number, stoppedAtMs: number, isListening: boolean): number {
+  if (isListening || stoppedAtMs <= 0 || lastFinalAtMs >= stoppedAtMs) {
+    return 0;
+  }
+
+  return Math.max(0, stoppedAtMs + HUD_HIDE_DELAY_MS - Date.now());
 }
 
 function App() {
@@ -36,6 +68,30 @@ function App() {
     micLevel: 0,
     error: null,
   });
+
+  // Segment tracking for export
+  const [segments, setSegments] = useState<TranscriptSegment[]>([]);
+  const segmentsRef = useRef<TranscriptSegment[]>([]);
+  const partialResultRef = useRef("");
+  const isListeningRef = useRef(false);
+  const recordingStartRef = useRef<number>(0);
+  const lastFinalAtRef = useRef<number>(0);
+  const lastFinalTextRef = useRef<string>("");
+  const stoppedAtRef = useRef<number>(0);
+  const shouldSuppressShutdownDuplicateRef = useRef(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const isExportingRef = useRef(false);
+
+  const scheduleHideTimer = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+    }
+    hideTimerRef.current = setTimeout(() => {
+      getCurrentWebviewWindow().hide().catch(() => {});
+      hideTimerRef.current = null;
+    }, HUD_HIDE_DELAY_MS);
+  }, []);
 
   // If onboarding is done on launch, hide the window
   useEffect(() => {
@@ -80,25 +136,62 @@ function App() {
   useEffect(() => {
     const unlisten = Promise.all([
       listen<{ text: string }>("transcript-partial", (e) => {
+        partialResultRef.current = e.payload.text;
         setState((s) => ({ ...s, partialResult: e.payload.text, error: null }));
       }),
       listen<{ text: string }>("transcript-final", (e) => {
+        const now = Date.now();
+        const previousFinalText = lastFinalTextRef.current;
+        const isShutdownDuplicate =
+          shouldSuppressShutdownDuplicateRef.current &&
+          stoppedAtRef.current > 0 &&
+          now - stoppedAtRef.current < SHUTDOWN_DEDUP_WINDOW_MS &&
+          now - lastFinalAtRef.current < SHUTDOWN_DEDUP_WINDOW_MS &&
+          e.payload.text === previousFinalText;
+        if (isShutdownDuplicate) {
+          shouldSuppressShutdownDuplicateRef.current = false;
+          return;
+        }
+
+        shouldSuppressShutdownDuplicateRef.current = false;
+        const endMs = Math.max(0, now - recordingStartRef.current);
+        setSegments((prev) => {
+          const nextSegments = reconcileTranscriptSegments(prev, e.payload.text, endMs);
+          segmentsRef.current = nextSegments;
+          return nextSegments;
+        });
+        lastFinalAtRef.current = now;
+        lastFinalTextRef.current = e.payload.text;
+        partialResultRef.current = "";
         setState((s) => ({
           ...s,
           transcript: e.payload.text,
           partialResult: "",
         }));
+        if (!isListeningRef.current && !isExportingRef.current) {
+          scheduleHideTimer();
+        }
       }),
       listen<{ level: number }>("mic-level", (e) => {
         setState((s) => ({ ...s, micLevel: e.payload.level }));
       }),
       listen<{ listening: boolean }>("listening-state", (e) => {
         if (e.payload.listening) {
-          // Starting: cancel any pending hide, clear old transcript
+          // Starting: cancel any pending hide, clear old transcript and stale errors
           if (hideTimerRef.current) {
             clearTimeout(hideTimerRef.current);
             hideTimerRef.current = null;
           }
+          isListeningRef.current = true;
+          recordingStartRef.current = Date.now();
+          lastFinalAtRef.current = 0;
+          lastFinalTextRef.current = "";
+          stoppedAtRef.current = 0;
+          shouldSuppressShutdownDuplicateRef.current = false;
+          segmentsRef.current = [];
+          partialResultRef.current = "";
+          setSegments([]);
+          setExportError(null);
           setState((s) => ({
             ...s,
             isListening: true,
@@ -108,19 +201,22 @@ function App() {
             micLevel: 0,
           }));
         } else {
-          // Stopping: keep HUD visible briefly so user sees final text
+          // Stopping: arm a one-shot, timing-only dedup for the SIGTERM artifact.
+          isListeningRef.current = false;
+          stoppedAtRef.current = Date.now();
+          shouldSuppressShutdownDuplicateRef.current = lastFinalAtRef.current > 0;
+          // Keep HUD visible briefly so user sees final text
           setState((s) => ({
             ...s,
             isListening: false,
             micLevel: 0,
           }));
-          hideTimerRef.current = setTimeout(() => {
-            getCurrentWebviewWindow().hide().catch(() => {});
-            hideTimerRef.current = null;
-          }, HUD_HIDE_DELAY_MS);
+          scheduleHideTimer();
         }
       }),
       listen<{ message: string }>("speech-error", (e) => {
+        isListeningRef.current = false;
+        stoppedAtRef.current = Date.now();
         setState((s) => ({
           ...s,
           error: e.payload.message,
@@ -134,7 +230,50 @@ function App() {
       unlisten.then((fns) => fns.forEach((fn) => fn()));
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
-  }, []);
+  }, [scheduleHideTimer]);
+
+  const exportTranscript = async (format: "txt" | "md" | "srt") => {
+    if (isExportingRef.current) return;
+    isExportingRef.current = true;
+    setIsExporting(true);
+    setExportError(null);
+    // Suspend auto-hide timer while export dialog is open
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+    try {
+      const settleDelayMs = getExportSettleDelayMs(
+        lastFinalAtRef.current,
+        stoppedAtRef.current,
+        isListeningRef.current,
+      );
+      if (settleDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
+      }
+
+      const exportSegments = buildExportSegments(
+        segmentsRef.current,
+        partialResultRef.current,
+        recordingStartRef.current,
+        stoppedAtRef.current,
+      );
+      if (exportSegments.length === 0) {
+        return;
+      }
+
+      await invoke("export_transcript", { segments: exportSegments, format });
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : typeof e === "string" ? e : "Export failed");
+    } finally {
+      isExportingRef.current = false;
+      setIsExporting(false);
+      // Re-arm auto-hide if dictation is not active
+      if (!isListeningRef.current) {
+        scheduleHideTimer();
+      }
+    }
+  };
 
   const toggleLanguage = () => {
     setLanguage((l) => (l === "en-US" ? "ja-JP" : "en-US"));
@@ -146,6 +285,13 @@ function App() {
 
   const displayText = state.partialResult || state.transcript;
   const isPartial = !!state.partialResult;
+  const exportSegments = buildExportSegments(
+    segments,
+    state.partialResult,
+    recordingStartRef.current,
+    stoppedAtRef.current,
+  );
+  const hasExportableTranscript = exportSegments.length > 0;
   const micLevelWidth = `${Math.max(0, Math.min(state.micLevel, 1)) * 100}%`;
   const statusText = state.error
     ? "Error"
@@ -283,6 +429,17 @@ function App() {
         <button type="button" className="lang-badge" onClick={toggleLanguage} title="Toggle language">
           {language}
         </button>
+        {hasExportableTranscript && !state.isListening && (
+          <div className="export-group" role="group" aria-label="Export transcript">
+            <span className="export-label">Export:</span>
+            <button type="button" className="export-btn" onClick={() => exportTranscript("txt")} disabled={isExporting} title="Export as plain text">TXT</button>
+            <button type="button" className="export-btn" onClick={() => exportTranscript("md")} disabled={isExporting} title="Export as Markdown">MD</button>
+            <button type="button" className="export-btn" onClick={() => exportTranscript("srt")} disabled={isExporting} title="Export as SRT subtitle">SRT</button>
+          </div>
+        )}
+        {exportError && hasExportableTranscript && !state.isListening && (
+          <span className="export-error" role="alert">{exportError}</span>
+        )}
         <span className="shortcut-hint">
           <kbd>⌥</kbd> + <kbd>Space</kbd>
         </span>
